@@ -1,0 +1,26 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>聖書通読</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+</head>
+<body>
+  <main style="font-family:system-ui;max-width:720px;margin:24px auto;padding:0 16px;">
+    <h1>聖書通読</h1>
+    <p id="today"></p>
+
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
+      <button id="btnPush" style="padding:10px 14px;font-weight:700;">🔔 通知を有効にする</button>
+      <button id="btnTest" style="padding:10px 14px;">表示テスト</button>
+    </div>
+
+    <section id="content"></section>
+    <hr />
+    <small>iPhoneは「ホーム画面に追加」した後に通知が使えます。</small>
+  </main>
+
+  <script src="./app.js"></script>
+</body>
+</html>
