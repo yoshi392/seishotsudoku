@@ -1,19 +1,29 @@
-// app.js（画面表示 + Push購読）
+// app.js
+
+// ★あなたのWorker
 const WORKER_ORIGIN = "https://seishotsudoku-push.teruntyo.workers.dev";
-const VAPID_PUBLIC_KEY = "BP51V69QOr3LWj2YhzcVO05ojPb9R_VRiMcNciBxPkOXbBtsYZMuJOxgrpVcr755ixYsWK5hVDJLXSgYpTWfM_I"; // 改行なし！
 
-const elStatus = document.getElementById("pushStatus");
-const elToday = document.getElementById("today");
-const elContent = document.getElementById("content");
-const elLinks = document.getElementById("links");
-const elErr = document.getElementById("err");
-const btnEnable = document.getElementById("btnEnablePush");
+// ★VAPID 公開鍵（改行なしで1行にしてください）
+const VAPID_PUBLIC_KEY = "BP51V69QOr3LWj2YhzcVO05ojPb9R_VRiMcNciBxPkOXbBtsYZMuJOxgrpVcr755ixYsWK5hVDJLXSgYpTWfM_I";
 
-function setStatus(msg) { elStatus.textContent = msg || ""; }
-function setErr(msg) { elErr.textContent = msg || ""; }
+const elPushBtn = document.getElementById("btnEnablePush");
+const elPushStatus = document.getElementById("pushStatus");
+const elMeta = document.getElementById("todayMeta");
+const elVerse = document.getElementById("todayVerse");
+const elBtnArea = document.getElementById("btnArea");
+const elComment = document.getElementById("todayComment");
+const elError = document.getElementById("errorBox");
+
+function setPushStatus(msg) {
+  elPushStatus.textContent = msg || "";
+}
+
+function setError(msg) {
+  elError.textContent = msg || "";
+}
 
 function urlBase64ToUint8Array(base64String) {
-  const padding = "=".repeat((4 - base64String.length % 4) % 4);
+  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = atob(base64);
   const outputArray = new Uint8Array(rawData.length);
@@ -21,145 +31,142 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-function escapeHtml(s){
-  return String(s ?? "")
-    .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
-    .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
-}
+function buildButtons(buttons) {
+  elBtnArea.innerHTML = "";
+  if (!Array.isArray(buttons) || buttons.length === 0) return;
 
-function bibleComToPrs(lbUrl) {
-  const m = String(lbUrl).trim().match(/\/bible\/\d+\/([0-9A-Z]+)\.([0-9]+)(?:\.([0-9]+))?\.[A-Z]+/i);
-  if (!m) return "";
-  const book = m[1].toLowerCase();
-  const chapter = m[2];
-  const verse = m[3];
-  return verse
-    ? `https://prs.app/ja/bible/${book}.${chapter}.${verse}.jdb`
-    : `https://prs.app/ja/bible/${book}.${chapter}.jdb`;
+  for (const b of buttons) {
+    const label = b.label || "聖書";
+    const prsUrl = b.prsUrl || "";
+    const lbUrl = b.lbUrl || "";
+
+    if (prsUrl) {
+      const a = document.createElement("a");
+      a.href = prsUrl;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = `${label}（新改訳2017）`;
+      a.style.cssText = "display:inline-block;padding:10px 14px;border-radius:12px;background:#eef3ff;text-decoration:none;font-weight:800;color:#1a73e8;";
+      elBtnArea.appendChild(a);
+    }
+
+    if (lbUrl) {
+      const a = document.createElement("a");
+      a.href = lbUrl;
+      a.target = "_blank";
+      a.rel = "noopener";
+      a.textContent = `${label}（LB）`;
+      a.style.cssText = "display:inline-block;padding:10px 14px;border-radius:12px;background:#fff3e6;text-decoration:none;font-weight:800;color:#b35a00;";
+      elBtnArea.appendChild(a);
+    }
+  }
 }
 
 async function loadToday() {
-  setErr("");
-  elContent.innerHTML = "読み込み中…";
-  elLinks.innerHTML = "";
+  setError("");
 
-  const r = await fetch(`${WORKER_ORIGIN}/today`, { method: "GET" });
-  const t = await r.text();
-  if (!r.ok) {
-    elContent.innerHTML = "";
-    setErr(`読み込みに失敗しました\n${r.status}\n${t}`);
+  // ?date=YYYY-MM-DD があればそれも渡せる（Worker側が対応していれば使われます）
+  const params = new URLSearchParams(location.search);
+  const date = params.get("date");
+  const url = date ? `${WORKER_ORIGIN}/today?date=${encodeURIComponent(date)}` : `${WORKER_ORIGIN}/today`;
+
+  const res = await fetch(url, { cache: "no-store" });
+  const txt = await res.text();
+  if (!res.ok) {
+    setError(`読み込みに失敗しました: ${res.status}\n${txt}`);
     return;
   }
 
-  const data = JSON.parse(t);
+  const data = JSON.parse(txt);
 
-  elToday.textContent = data.date ? `日付：${data.date}${data.weekday ? `（${data.weekday}）` : ""}` : "";
-
-  // 表示本文
-  const verse = data.verse || "";
-  const comment = data.comment || "";
-  elContent.innerHTML = `
-    <div style="font-size:1.25rem;font-weight:900;margin-bottom:8px;">${escapeHtml(data.title || "今日の聖書箇所")}</div>
-    <div style="font-size:1.1rem;line-height:1.7;">
-      <div><b>聖書箇所：</b>${escapeHtml(verse)}</div>
-      ${comment ? `<div style="margin-top:10px;"><b>今日のコメント：</b><br>${escapeHtml(comment).replace(/\n/g,"<br>")}</div>` : ""}
-    </div>
-  `;
-
-  // ボタン（新改訳2017 / LB）
-  const urls = Array.isArray(data.urls) ? data.urls : [];
-  if (urls.length) {
-    const btns = urls.map((u, i) => {
-      const lb = u;
-      const prs = bibleComToPrs(lb) || lb;
-      const label = urls.length > 1 ? `聖書(${i+1})` : "聖書";
-      return `
-        <a href="${escapeHtml(prs)}" target="_blank" rel="noopener"
-           style="display:inline-block;padding:10px 12px;border-radius:14px;background:#eef3ff;text-decoration:none;font-weight:900;">
-           ${escapeHtml(label)}（新改訳2017）
-        </a>
-        <a href="${escapeHtml(lb)}" target="_blank" rel="noopener"
-           style="display:inline-block;padding:10px 12px;border-radius:14px;background:#f3f3f3;text-decoration:none;font-weight:900;">
-           ${escapeHtml(label)}（LB）
-        </a>
-      `;
-    }).join("");
-
-    elLinks.innerHTML = btns;
+  if (!data.ok) {
+    setError(`読み込みに失敗しました\n${data.error || ""}`);
+    return;
   }
+
+  elMeta.textContent = `${data.date || ""}（${data.weekday || ""}）`;
+  elVerse.textContent = data.verse || "";
+  elComment.textContent = data.comment || "";
+
+  buildButtons(data.buttons || []);
 }
 
-async function getRegistration() {
-  // GitHub Pages 配下なので ./sw.js
-  return await navigator.serviceWorker.register("./sw.js");
-}
-
-async function refreshPushButton() {
-  // Push対応チェック
+async function refreshPushButtonState() {
+  // SW対応確認
   if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    btnEnable.style.display = "none";
-    setStatus("この端末/ブラウザはPush通知に対応していません");
+    elPushBtn.style.display = "none";
+    setPushStatus("この端末/ブラウザはPush通知に対応していません。");
     return;
   }
 
-  const reg = await getRegistration();
-  const sub = await reg.pushManager.getSubscription();
+  // 既に許可されてなければボタンは出す
+  if (Notification.permission !== "granted") {
+    elPushBtn.style.display = "";
+    setPushStatus("");
+    return;
+  }
 
-  if (sub) {
-    // 既に購読済み → ボタン消す
-    btnEnable.style.display = "none";
-    setStatus("✅ 通知は有効です");
-  } else {
-    btnEnable.style.display = "inline-block";
-    setStatus("");
+  // 既に購読済みならボタン消す
+  try {
+    const reg = await navigator.serviceWorker.ready;
+    const sub = await reg.pushManager.getSubscription();
+    if (sub) {
+      elPushBtn.style.display = "none";
+      setPushStatus("✅ 通知は有効です");
+    } else {
+      elPushBtn.style.display = "";
+      setPushStatus("");
+    }
+  } catch {
+    elPushBtn.style.display = "";
+    setPushStatus("");
   }
 }
 
 async function enablePush() {
-  try {
-    setStatus("準備中…");
+  setPushStatus("準備中…");
+  setError("");
 
-    if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.includes("\n")) {
-      setStatus("VAPID_PUBLIC_KEY が未設定、または改行が入っています（1行で貼ってください）");
-      return;
-    }
+  // SW登録（GitHub Pages配下なので ./sw.js）
+  const reg = await navigator.serviceWorker.register("./sw.js");
 
-    const reg = await getRegistration();
-
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") {
-      setStatus("通知が許可されませんでした（端末設定で通知をONにしてください）");
-      return;
-    }
-
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-    });
-
-    const res = await fetch(WORKER_ORIGIN + "/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sub),
-    });
-
-    const txt = await res.text();
-    if (!res.ok) {
-      setStatus("subscribe失敗: " + res.status + " " + txt);
-      return;
-    }
-
-    setStatus("✅ 通知を有効にしました");
-    await refreshPushButton(); // 有効化後にボタンを消す
-  } catch (e) {
-    setStatus("エラー: " + (e?.message || String(e)));
+  // 権限要求
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") {
+    setPushStatus("通知が許可されませんでした（端末の設定をご確認ください）");
+    return;
   }
+
+  // 購読作成
+  const sub = await reg.pushManager.subscribe({
+    userVisibleOnly: true,
+    applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
+  });
+
+  // Workerへ保存
+  const res = await fetch(WORKER_ORIGIN + "/subscribe", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(sub),
+  });
+
+  const t = await res.text();
+  if (!res.ok) {
+    setPushStatus(`subscribe失敗: ${res.status} ${t}`);
+    return;
+  }
+
+  setPushStatus("✅ 通知は有効です");
+  elPushBtn.style.display = "none";
 }
 
-btnEnable.addEventListener("click", enablePush);
-
-// 起動時
-(async () => {
-  await refreshPushButton();
+document.addEventListener("DOMContentLoaded", async () => {
+  // 画面表示
   await loadToday();
-})();
+
+  // Push状態反映
+  await refreshPushButtonState();
+
+  // ボタン
+  elPushBtn.addEventListener("click", enablePush);
+});
