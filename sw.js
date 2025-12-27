@@ -1,18 +1,24 @@
-self.addEventListener("install", () => self.skipWaiting());
-self.addEventListener("activate", (e) => e.waitUntil(self.clients.claim()));
+// sw.js
+self.addEventListener("install", (event) => {
+  self.skipWaiting();
+});
+
+self.addEventListener("activate", (event) => {
+  event.waitUntil(self.clients.claim());
+});
 
 self.addEventListener("push", (event) => {
   const data = event.data ? event.data.json() : {};
-  const title = data.title || "聖書通読";
-  const options = {
-    body: data.body || "",
-    data: { url: data.url || "./" }
-  };
-  event.waitUntil(self.registration.showNotification(title, options));
+  event.waitUntil(
+    self.registration.showNotification(data.title || "聖書通読", {
+      body: data.body || "",
+      data: { url: data.url || "/seishotsudoku/" },
+    })
+  );
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = event.notification?.data?.url || "./";
+  const url = event.notification?.data?.url || "/seishotsudoku/";
   event.waitUntil(clients.openWindow(url));
 });
