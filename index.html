@@ -4,25 +4,27 @@
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>聖書通読</title>
+
   <link rel="manifest" href="./manifest.webmanifest" />
+  <meta name="theme-color" content="#ffffff" />
 </head>
 <body>
-  <main style="font-family:system-ui;max-width:780px;margin:24px auto;padding:0 16px;">
+  <main style="font-family:system-ui;max-width:720px;margin:24px auto;padding:0 16px;">
     <h1>聖書通読</h1>
 
     <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
-      <button id="btnEnablePush" style="padding:10px 14px;font-weight:800;">🔔 通知を有効にする</button>
+      <button id="btnEnablePush" style="padding:10px 14px;font-weight:700;">🔔 通知を有効にする</button>
     </div>
+    <div id="pushStatus" style="margin:6px 0 18px;"></div>
 
-    <div id="pushStatus" style="margin:8px 0;color:#333;"></div>
+    <div id="todayMeta" style="font-size:18px;font-weight:700;margin:10px 0;"></div>
+    <div id="todayVerse" style="font-size:22px;font-weight:800;margin:6px 0;"></div>
 
-    <div id="today" style="margin:10px 0;font-weight:700;"></div>
+    <div id="btnArea" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;"></div>
 
-    <section id="content" style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 6px 18px rgba(0,0,0,.08);"></section>
+    <div id="todayComment" style="white-space:pre-wrap;margin-top:16px;"></div>
 
-    <div id="links" style="margin:12px 0;display:flex;gap:10px;flex-wrap:wrap;"></div>
-
-    <div id="err" style="margin-top:12px;color:#b00020;white-space:pre-wrap;"></div>
+    <div id="errorBox" style="margin-top:16px;color:#b00020;"></div>
   </main>
 
   <script src="./app.js"></script>
