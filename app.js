@@ -1,53 +1,11 @@
 // app.js
-
-// ★あなたのWorker
 const WORKER_ORIGIN = "https://seishotsudoku-push.teruntyo.workers.dev";
 
-// ★VAPID 公開鍵（改行なしで1行にしてください）
+// ★あなたの Worker と同じ VAPID 公開鍵（Public）
 const VAPID_PUBLIC_KEY = "BP51V69QOr3LWj2YhzcVO05ojPb9R_VRiMcNciBxPkOXbBtsYZMuJOxgrpVcr755ixYsWK5hVDJLXSgYpTWfM_I";
 
-// 既存
-const elPushBtn = document.getElementById("btnEnablePush");
-// 追加
-const elInstallBtn = document.getElementById("btnInstall");
-
-let deferredInstallPrompt = null;
-
-function initInstallPrompt() {
-  if (!elInstallBtn) return;
-
-  // iOS Safariは beforeinstallprompt が無いので出さない
-  const ua = navigator.userAgent || "";
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-  if (isIOS) {
-    elInstallBtn.style.display = "none";
-    return;
-  }
-
-  window.addEventListener("beforeinstallprompt", (e) => {
-    // 自動ミニバーを止めて、自前ボタンで出す
-    e.preventDefault();
-    deferredInstallPrompt = e;
-    elInstallBtn.style.display = "";
-  });
-
-  elInstallBtn.addEventListener("click", async () => {
-    if (!deferredInstallPrompt) return;
-
-    deferredInstallPrompt.prompt();
-    const choice = await deferredInstallPrompt.userChoice.catch(() => null);
-
-    // どちらでもボタンは隠す（再表示はブラウザが判断）
-    deferredInstallPrompt = null;
-    elInstallBtn.style.display = "none";
-  });
-
-  window.addEventListener("appinstalled", () => {
-    deferredInstallPrompt = null;
-    elInstallBtn.style.display = "none";
-  });
-}
-
+const elPushBtn = document.getElementById("pushBtn");
+const elInstallBtn = document.getElementById("installBtn");
 const elPushStatus = document.getElementById("pushStatus");
 const elMeta = document.getElementById("todayMeta");
 const elVerse = document.getElementById("todayVerse");
@@ -55,16 +13,26 @@ const elBtnArea = document.getElementById("btnArea");
 const elComment = document.getElementById("todayComment");
 const elError = document.getElementById("errorBox");
 
-function setPushStatus(msg) {
-  elPushStatus.textContent = msg || "";
-}
-
+// ----------------------------
+// UI helpers
+// ----------------------------
 function setError(msg) {
-  elError.textContent = msg || "";
+  if (!elError) return;
+  elError.style.display = "block";
+  elError.textContent = msg;
+}
+function clearError() {
+  if (!elError) return;
+  elError.style.display = "none";
+  elError.textContent = "";
+}
+function setPushStatus(msg) {
+  if (!elPushStatus) return;
+  elPushStatus.textContent = msg;
 }
 
 function urlBase64ToUint8Array(base64String) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+  const padding = "=".repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
   const rawData = atob(base64);
   const outputArray = new Uint8Array(rawData.length);
@@ -72,127 +40,103 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-function buildButtons(buttons) {
-  elBtnArea.innerHTML = "";
-  if (!Array.isArray(buttons) || buttons.length === 0) return;
-
-  for (const b of buttons) {
-    const label = b.label || "聖書";
-    const prsUrl = b.prsUrl || "";
-    const lbUrl = b.lbUrl || "";
-
-    if (prsUrl) {
-      const a = document.createElement("a");
-      a.href = prsUrl;
-      a.target = "_blank";
-      a.rel = "noopener";
-      a.textContent = `${label}（新改訳2017）`;
-      a.style.cssText = "display:inline-block;padding:10px 14px;border-radius:12px;background:#eef3ff;text-decoration:none;font-weight:800;color:#1a73e8;";
-      elBtnArea.appendChild(a);
-    }
-
-    if (lbUrl) {
-      const a = document.createElement("a");
-      a.href = lbUrl;
-      a.target = "_blank";
-      a.rel = "noopener";
-      a.textContent = `${label}（LB）`;
-      a.style.cssText = "display:inline-block;padding:10px 14px;border-radius:12px;background:#fff3e6;text-decoration:none;font-weight:800;color:#b35a00;";
-      elBtnArea.appendChild(a);
-    }
-  }
+function isStandalonePWA() {
+  // iOS: navigator.standalone / others: display-mode
+  return (window.navigator.standalone === true) ||
+    window.matchMedia?.("(display-mode: standalone)")?.matches;
 }
 
-async function loadToday() {
-  setError("");
-
-  // ?date=YYYY-MM-DD があればそれも渡せる（Worker側が対応していれば使われます）
-  const params = new URLSearchParams(location.search);
-  const date = params.get("date");
-  const url = date ? `${WORKER_ORIGIN}/today?date=${encodeURIComponent(date)}` : `${WORKER_ORIGIN}/today`;
-
-  const res = await fetch(url, { cache: "no-store" });
-  const txt = await res.text();
-  if (!res.ok) {
-    setError(`読み込みに失敗しました: ${res.status}\n${txt}`);
-    return;
-  }
-
-  const data = JSON.parse(txt);
-
-  if (!data.ok) {
-    setError(`読み込みに失敗しました\n${data.error || ""}`);
-    return;
-  }
-
-  elMeta.textContent = `${data.date || ""}（${data.weekday || ""}）`;
-  elVerse.textContent = data.verse || "";
-  elComment.textContent = data.comment || "";
-
-  buildButtons(data.buttons || []);
+function supportsPush() {
+  return ("serviceWorker" in navigator) && ("PushManager" in window);
 }
 
-async function refreshPushButtonState() {
-  // SW対応確認
-if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-  elPushBtn.style.display = "none";
+// ----------------------------
+// PWA install prompt (Android/Chrome)
+// ----------------------------
+let deferredPrompt = null;
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (elInstallBtn) elInstallBtn.style.display = "inline-block";
+});
 
-  const ua = navigator.userAgent || "";
-  const isIOS = /iPhone|iPad|iPod/i.test(ua);
-
-  setPushStatus(
-    isIOS
-      ? "Push通知を有効にするには、このページを「ホーム画面に追加」して、追加したアイコンから開いてください。"
-      : "Push通知を有効にできない状態です。ブラウザの通知設定を確認してください（可能ならホーム画面に追加してお試しください）。"
-  );
-  return;
+if (elInstallBtn) {
+  elInstallBtn.addEventListener("click", async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice.catch(() => null);
+    deferredPrompt = null;
+    elInstallBtn.style.display = "none";
+  });
 }
 
-  // 既に許可されてなければボタンは出す
-  if (Notification.permission !== "granted") {
-    elPushBtn.style.display = "";
-    setPushStatus("");
-    return;
-  }
-
-  // 既に購読済みならボタン消す
+// ----------------------------
+// SW register
+// ----------------------------
+async function ensureServiceWorker() {
+  if (!("serviceWorker" in navigator)) return null;
   try {
-    const reg = await navigator.serviceWorker.ready;
-    const sub = await reg.pushManager.getSubscription();
-    if (sub) {
-      elPushBtn.style.display = "none";
-      setPushStatus("✅ 通知は有効です");
-    } else {
-      elPushBtn.style.display = "";
-      setPushStatus("");
-    }
-  } catch {
-    elPushBtn.style.display = "";
-    setPushStatus("");
+    const reg = await navigator.serviceWorker.register("./sw.js");
+    return reg;
+  } catch (e) {
+    console.log("SW register failed:", e);
+    return null;
   }
+}
+
+// ----------------------------
+// Push enable
+// ----------------------------
+async function refreshPushUI() {
+  if (!elPushBtn) return;
+
+  // すでに許可済み＆購読済みならボタンを消す
+  if (supportsPush()) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      const sub = await reg.pushManager.getSubscription();
+      if (Notification.permission === "granted" && sub) {
+        elPushBtn.style.display = "none";
+        setPushStatus("✅ 通知は有効です");
+        return;
+      }
+    } catch {}
+  }
+
+  // 未購読
+  elPushBtn.style.display = "inline-block";
+  setPushStatus("");
 }
 
 async function enablePush() {
+  clearError();
   setPushStatus("準備中…");
-  setError("");
 
-  // SW登録（GitHub Pages配下なので ./sw.js）
-  const reg = await navigator.serviceWorker.register("./sw.js");
-
-  // 権限要求
-  const perm = await Notification.requestPermission();
-  if (perm !== "granted") {
-    setPushStatus("通知が許可されませんでした（端末の設定をご確認ください）");
+  // iPhone/iPad は「ホーム画面に追加」必須ケースがあるので、ここは案内寄りの文言にする
+  if (!supportsPush()) {
+    setPushStatus("Push通知を有効にするには、ホーム画面に追加して開いてください。");
     return;
   }
 
-  // 購読作成
+  // iOS系でブラウザから開いてるなら案内
+  if (!isStandalonePWA() && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
+    setPushStatus("Push通知を有効にするには、ホーム画面に追加して開いてください。");
+    return;
+  }
+
+  const perm = await Notification.requestPermission();
+  if (perm !== "granted") {
+    setPushStatus("通知が許可されていません。設定で通知をONにしてください。");
+    return;
+  }
+
+  const reg = await navigator.serviceWorker.ready;
+
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
   });
 
-  // Workerへ保存
   const res = await fetch(WORKER_ORIGIN + "/subscribe", {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -201,7 +145,8 @@ async function enablePush() {
 
   const t = await res.text();
   if (!res.ok) {
-    setPushStatus(`subscribe失敗: ${res.status} ${t}`);
+    setError("subscribe失敗: " + res.status + " " + t);
+    setPushStatus("");
     return;
   }
 
@@ -209,56 +154,81 @@ async function enablePush() {
   elPushBtn.style.display = "none";
 }
 
-document.addEventListener("DOMContentLoaded", async () => {
-  let deferredInstallPrompt = null;
-const elInstallBtn = document.getElementById("btnInstall");
-// ★PWA用：ページ表示時にSW登録（インストール条件に効く）
-  if ("serviceWorker" in navigator) {
-    try { await navigator.serviceWorker.register("./sw.js"); } catch {}
+// ----------------------------
+// Today render
+// ----------------------------
+function escapeHtml(s) {
+  return String(s || "")
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&#39;");
+}
+
+function renderButtons(buttons) {
+  if (!elBtnArea) return;
+  elBtnArea.innerHTML = "";
+
+  (buttons || []).forEach((b) => {
+    const wrap = document.createElement("div");
+    wrap.style.display = "flex";
+    wrap.style.gap = "10px";
+    wrap.style.flexWrap = "wrap";
+
+    const a1 = document.createElement("a");
+    a1.href = b.prsUrl;
+    a1.target = "_blank";
+    a1.rel = "noopener";
+    a1.textContent = `${b.label}（新改訳2017）`;
+    a1.style.cssText = "display:inline-block;padding:10px 14px;border-radius:12px;background:#eef3ff;color:#1a73e8;text-decoration:none;font-weight:800;";
+
+    const a2 = document.createElement("a");
+    a2.href = b.lbUrl;
+    a2.target = "_blank";
+    a2.rel = "noopener";
+    a2.textContent = `${b.label}（LB）`;
+    a2.style.cssText = "display:inline-block;padding:10px 14px;border-radius:12px;background:#fff2e3;color:#c25a00;text-decoration:none;font-weight:800;";
+
+    wrap.appendChild(a1);
+    wrap.appendChild(a2);
+    elBtnArea.appendChild(wrap);
+  });
+}
+
+async function loadToday() {
+  clearError();
+
+  const r = await fetch(WORKER_ORIGIN + "/today", { cache: "no-store" });
+  if (!r.ok) {
+    const t = await r.text().catch(() => "");
+    setError("読み込みに失敗しました（today）: " + r.status + " " + t);
+    return;
   }
 
-  initInstallPrompt();
+  const j = await r.json().catch(() => null);
+  if (!j?.ok) {
+    setError("読み込みに失敗しました（today）: " + (j?.error || "unknown"));
+    return;
+  }
 
-  await loadToday();
-  await refreshPushButtonState();
+  if (elMeta) elMeta.textContent = `${j.date}（${j.weekday}）`;
+  if (elVerse) elVerse.textContent = j.verse || "";
 
-  elPushBtn.addEventListener("click", enablePush);
-});
-// Chrome(Android)が「インストール可能」と判断すると発火
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault(); // ブラウザ任せのミニバーを止めて、自前ボタンで出す
-  deferredInstallPrompt = e;
-  if (elInstallBtn) elInstallBtn.style.display = "";
-});
+  renderButtons(j.buttons || []);
 
-// インストール完了後はボタンを消す
-window.addEventListener("appinstalled", () => {
-  deferredInstallPrompt = null;
-  if (elInstallBtn) elInstallBtn.style.display = "none";
-});
-
-// ボタンクリックでインストールを促す
-async function handleInstallClick() {
-  if (!deferredInstallPrompt) return;
-
-  deferredInstallPrompt.prompt();
-  const choice = await deferredInstallPrompt.userChoice.catch(() => null);
-
-  // choice?.outcome === "accepted" / "dismissed"
-  deferredInstallPrompt = null;
-  if (elInstallBtn) elInstallBtn.style.display = "none";
+  if (elComment) {
+    elComment.textContent = j.comment || "";
+  }
 }
 
-if (elInstallBtn) {
-  elInstallBtn.addEventListener("click", handleInstallClick);
-}
-
-  // 画面表示
+// ----------------------------
+// boot
+// ----------------------------
+(async function boot() {
+  await ensureServiceWorker();
+  await refreshPushUI();
   await loadToday();
 
-  // Push状態反映
-  await refreshPushButtonState();
-
-  // ボタン
-  elPushBtn.addEventListener("click", enablePush);
-});
+  if (elPushBtn) elPushBtn.addEventListener("click", enablePush);
+})();
