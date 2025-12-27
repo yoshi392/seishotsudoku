@@ -232,3 +232,36 @@ async function loadToday() {
 
   if (elPushBtn) elPushBtn.addEventListener("click", enablePush);
 })();
+// ===== ② 起動時にバッジ＆通知を消す（Android対策） =====
+async function clearBadgesAndNotifications() {
+  // 1) Service Workerへ「通知を全部閉じて」と依頼
+  if ("serviceWorker" in navigator) {
+    try {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg?.active) {
+        reg.active.postMessage({ type: "CLEAR_NOTIFICATIONS" });
+      }
+    } catch (e) {
+      // 失敗しても無視でOK
+    }
+  }
+
+  // 2) アプリアイコンの数字（Badge）を消す（対応端末のみ）
+  try {
+    if ("clearAppBadge" in navigator) {
+      await navigator.clearAppBadge();
+    } else if ("setAppBadge" in navigator) {
+      await navigator.setAppBadge(0);
+    }
+  } catch (e) {
+    // 失敗しても無視でOK
+  }
+}
+
+// ページ表示時に実行
+window.addEventListener("load", clearBadgesAndNotifications);
+
+// アプリに戻ってきた時にも実行（効果高い）
+document.addEventListener("visibilitychange", () => {
+  if (document.visibilityState === "visible") clearBadgesAndNotifications();
+});
