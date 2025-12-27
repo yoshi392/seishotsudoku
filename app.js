@@ -6,7 +6,48 @@ const WORKER_ORIGIN = "https://seishotsudoku-push.teruntyo.workers.dev";
 // ★VAPID 公開鍵（改行なしで1行にしてください）
 const VAPID_PUBLIC_KEY = "BP51V69QOr3LWj2YhzcVO05ojPb9R_VRiMcNciBxPkOXbBtsYZMuJOxgrpVcr755ixYsWK5hVDJLXSgYpTWfM_I";
 
+// 既存
 const elPushBtn = document.getElementById("btnEnablePush");
+// 追加
+const elInstallBtn = document.getElementById("btnInstall");
+
+let deferredInstallPrompt = null;
+
+function initInstallPrompt() {
+  if (!elInstallBtn) return;
+
+  // iOS Safariは beforeinstallprompt が無いので出さない
+  const ua = navigator.userAgent || "";
+  const isIOS = /iPhone|iPad|iPod/i.test(ua);
+  if (isIOS) {
+    elInstallBtn.style.display = "none";
+    return;
+  }
+
+  window.addEventListener("beforeinstallprompt", (e) => {
+    // 自動ミニバーを止めて、自前ボタンで出す
+    e.preventDefault();
+    deferredInstallPrompt = e;
+    elInstallBtn.style.display = "";
+  });
+
+  elInstallBtn.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+
+    deferredInstallPrompt.prompt();
+    const choice = await deferredInstallPrompt.userChoice.catch(() => null);
+
+    // どちらでもボタンは隠す（再表示はブラウザが判断）
+    deferredInstallPrompt = null;
+    elInstallBtn.style.display = "none";
+  });
+
+  window.addEventListener("appinstalled", () => {
+    deferredInstallPrompt = null;
+    elInstallBtn.style.display = "none";
+  });
+}
+
 const elPushStatus = document.getElementById("pushStatus");
 const elMeta = document.getElementById("todayMeta");
 const elVerse = document.getElementById("todayVerse");
@@ -171,7 +212,18 @@ async function enablePush() {
 document.addEventListener("DOMContentLoaded", async () => {
   let deferredInstallPrompt = null;
 const elInstallBtn = document.getElementById("btnInstall");
+// ★PWA用：ページ表示時にSW登録（インストール条件に効く）
+  if ("serviceWorker" in navigator) {
+    try { await navigator.serviceWorker.register("./sw.js"); } catch {}
+  }
 
+  initInstallPrompt();
+
+  await loadToday();
+  await refreshPushButtonState();
+
+  elPushBtn.addEventListener("click", enablePush);
+});
 // Chrome(Android)が「インストール可能」と判断すると発火
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault(); // ブラウザ任せのミニバーを止めて、自前ボタンで出す
