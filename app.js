@@ -1,36 +1,59 @@
-// app.js
+// app.js (GitHub Pages)
+
 const WORKER_ORIGIN = "https://seishotsudoku-push.teruntyo.workers.dev";
 
-// ★あなたの Worker と同じ VAPID 公開鍵（Public）
-const VAPID_PUBLIC_KEY = "BP51V69QOr3LWj2YhzcVO05ojPb9R_VRiMcNciBxPkOXbBtsYZMuJOxgrpVcr755ixYsWK5hVDJLXSgYpTWfM_I";
+// VAPID 公開鍵（Public Keyだけ）
+const VAPID_PUBLIC_KEY = "（あなたの公開鍵）";
 
-const elPushBtn = document.getElementById("pushBtn");
-const elInstallBtn = document.getElementById("installBtn");
-const elPushStatus = document.getElementById("pushStatus");
-const elMeta = document.getElementById("todayMeta");
-const elVerse = document.getElementById("todayVerse");
-const elBtnArea = document.getElementById("btnArea");
-const elComment = document.getElementById("todayComment");
-const elError = document.getElementById("errorBox");
+const els = {
+  install: document.getElementById("btnInstall"),
+  btnArea: document.getElementById("btnArea"),
+  meta: document.getElementById("todayMeta"),
+  verse: document.getElementById("todayVerse"),
+  comment: document.getElementById("todayComment"),
+  error: document.getElementById("errorBox"),
+  history: document.getElementById("history"),
+  stats: document.getElementById("stats"),
+  filterUnread: document.getElementById("btnFilterUnread"),
+};
+
+let deferredPrompt = null;
+let filterUnread = false;
 
 // ----------------------------
-// UI helpers
+// 端末ID（ログイン無しの“自分用”）
 // ----------------------------
-function setError(msg) {
-  if (!elError) return;
-  elError.style.display = "block";
-  elError.textContent = msg;
-}
-function clearError() {
-  if (!elError) return;
-  elError.style.display = "none";
-  elError.textContent = "";
-}
-function setPushStatus(msg) {
-  if (!elPushStatus) return;
-  elPushStatus.textContent = msg;
+function getDeviceId() {
+  let id = localStorage.getItem("deviceId");
+  if (!id) {
+    id = (crypto?.randomUUID?.() || String(Date.now()) + Math.random());
+    localStorage.setItem("deviceId", id);
+  }
+  return id;
 }
 
+// ----------------------------
+// Android「アプリをインストール」ボタン
+// ----------------------------
+window.addEventListener("beforeinstallprompt", (e) => {
+  e.preventDefault();
+  deferredPrompt = e;
+  if (els.install) els.install.style.display = "inline-block";
+});
+
+if (els.install) {
+  els.install.addEventListener("click", async () => {
+    if (!deferredPrompt) return;
+    deferredPrompt.prompt();
+    await deferredPrompt.userChoice.catch(() => null);
+    deferredPrompt = null;
+    els.install.style.display = "none";
+  });
+}
+
+// ----------------------------
+// Push 有効化
+// ----------------------------
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -40,98 +63,32 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-function isStandalonePWA() {
-  // iOS: navigator.standalone / others: display-mode
-  return (window.navigator.standalone === true) ||
-    window.matchMedia?.("(display-mode: standalone)")?.matches;
-}
-
-function supportsPush() {
-  return ("serviceWorker" in navigator) && ("PushManager" in window);
-}
-
-// ----------------------------
-// PWA install prompt (Android/Chrome)
-// ----------------------------
-let deferredPrompt = null;
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault();
-  deferredPrompt = e;
-  if (elInstallBtn) elInstallBtn.style.display = "inline-block";
-});
-
-if (elInstallBtn) {
-  elInstallBtn.addEventListener("click", async () => {
-    if (!deferredPrompt) return;
-    deferredPrompt.prompt();
-    await deferredPrompt.userChoice.catch(() => null);
-    deferredPrompt = null;
-    elInstallBtn.style.display = "none";
-  });
-}
-
-// ----------------------------
-// SW register
-// ----------------------------
-async function ensureServiceWorker() {
+async function ensureSwReady() {
   if (!("serviceWorker" in navigator)) return null;
-  try {
-    const reg = await navigator.serviceWorker.register("./sw.js");
-    return reg;
-  } catch (e) {
-    console.log("SW register failed:", e);
-    return null;
-  }
+  await navigator.serviceWorker.register("./sw.js");
+  return navigator.serviceWorker.ready;
 }
 
-// ----------------------------
-// Push enable
-// ----------------------------
-async function refreshPushUI() {
-  if (!elPushBtn) return;
-
-  // すでに許可済み＆購読済みならボタンを消す
-  if (supportsPush()) {
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (Notification.permission === "granted" && sub) {
-        elPushBtn.style.display = "none";
-        setPushStatus("✅ 通知は有効です");
-        return;
-      }
-    } catch {}
-  }
-
-  // 未購読
-  elPushBtn.style.display = "inline-block";
-  setPushStatus("");
+async function getSubscription() {
+  const reg = await ensureSwReady();
+  if (!reg) return null;
+  return reg.pushManager.getSubscription();
 }
 
 async function enablePush() {
-  clearError();
-  setPushStatus("準備中…");
-
-  // iPhone/iPad は「ホーム画面に追加」必須ケースがあるので、ここは案内寄りの文言にする
-  if (!supportsPush()) {
-    setPushStatus("Push通知を有効にするには、ホーム画面に追加して開いてください。");
-    return;
-  }
-
-  // iOS系でブラウザから開いてるなら案内
-  if (!isStandalonePWA() && /iPhone|iPad|iPod/i.test(navigator.userAgent)) {
-    setPushStatus("Push通知を有効にするには、ホーム画面に追加して開いてください。");
+  // iPhone Safari は「ホーム画面に追加」してから（ただし現在はSE3もOKとのことなので文言だけ丁寧に）
+  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+    alert("Push通知を有効にするには、ホーム画面に追加して開いてください。");
     return;
   }
 
   const perm = await Notification.requestPermission();
   if (perm !== "granted") {
-    setPushStatus("通知が許可されていません。設定で通知をONにしてください。");
+    alert("通知が許可されていません。設定で通知を許可してください。");
     return;
   }
 
-  const reg = await navigator.serviceWorker.ready;
-
+  const reg = await ensureSwReady();
   const sub = await reg.pushManager.subscribe({
     userVisibleOnly: true,
     applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
@@ -143,125 +100,223 @@ async function enablePush() {
     body: JSON.stringify(sub),
   });
 
-  const t = await res.text();
   if (!res.ok) {
-    setError("subscribe失敗: " + res.status + " " + t);
-    setPushStatus("");
+    const t = await res.text().catch(() => "");
+    alert("購読の保存に失敗しました: " + res.status + " " + t);
     return;
   }
 
-  setPushStatus("✅ 通知は有効です");
-  elPushBtn.style.display = "none";
+  await refreshPushButtons();
+  alert("通知を有効にしました。");
+}
+
+async function refreshPushButtons() {
+  if (!els.btnArea) return;
+
+  const sub = await getSubscription().catch(() => null);
+  els.btnArea.innerHTML = "";
+
+  if (sub) {
+    // 有効ならボタンを消す（要望通り）
+    return;
+  }
+
+  const btn = document.createElement("button");
+  btn.textContent = "🔔 通知を有効にする";
+  btn.style.padding = "10px 14px";
+  btn.style.fontWeight = "700";
+  btn.addEventListener("click", enablePush);
+  els.btnArea.appendChild(btn);
 }
 
 // ----------------------------
-// Today render
+// 表示（今日/指定日）
 // ----------------------------
-function escapeHtml(s) {
-  return String(s || "")
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+function getQueryDate() {
+  const u = new URL(location.href);
+  const d = (u.searchParams.get("date") || "").trim();
+  return /^\d{4}-\d{2}-\d{2}$/.test(d) ? d : null;
 }
 
-function renderButtons(buttons) {
-  if (!elBtnArea) return;
-  elBtnArea.innerHTML = "";
+function setQueryDate(ymd) {
+  const u = new URL(location.href);
+  u.searchParams.set("date", ymd);
+  history.pushState(null, "", u.toString());
+}
 
-  (buttons || []).forEach((b) => {
+async function apiGet(path) {
+  const r = await fetch(WORKER_ORIGIN + path, { cache: "no-store" });
+  const t = await r.text();
+  try { return JSON.parse(t); } catch { return { ok: false, error: t }; }
+}
+
+function renderToday(data) {
+  els.error.textContent = "";
+
+  els.meta.textContent = `${data.date}（${data.weekday || ""}）`;
+  els.verse.textContent = data.verse || "";
+  els.comment.textContent = data.comment || "";
+
+  // 2ボタン（新改訳2017 / LB）
+  const area = els.btnArea;
+  if (!area) return;
+
+  // pushボタンの表示は refreshPushButtons() が担当
+  // ここでは聖書ボタンを下に足す
+  if (Array.isArray(data.buttons) && data.buttons.length) {
     const wrap = document.createElement("div");
     wrap.style.display = "flex";
     wrap.style.gap = "10px";
     wrap.style.flexWrap = "wrap";
+    wrap.style.marginTop = "12px";
 
-    const a1 = document.createElement("a");
-    a1.href = b.prsUrl;
-    a1.target = "_blank";
-    a1.rel = "noopener";
-    a1.textContent = `${b.label}（新改訳2017）`;
-    a1.style.cssText = "display:inline-block;padding:10px 14px;border-radius:12px;background:#eef3ff;color:#1a73e8;text-decoration:none;font-weight:800;";
+    data.buttons.forEach((b) => {
+      const a1 = document.createElement("a");
+      a1.href = b.prsUrl;
+      a1.target = "_blank";
+      a1.rel = "noopener";
+      a1.textContent = `${b.label}（新改訳2017）`;
+      a1.style.padding = "10px 12px";
+      a1.style.background = "#eef3ff";
+      a1.style.borderRadius = "12px";
+      a1.style.textDecoration = "none";
 
-    const a2 = document.createElement("a");
-    a2.href = b.lbUrl;
-    a2.target = "_blank";
-    a2.rel = "noopener";
-    a2.textContent = `${b.label}（LB）`;
-    a2.style.cssText = "display:inline-block;padding:10px 14px;border-radius:12px;background:#fff2e3;color:#c25a00;text-decoration:none;font-weight:800;";
+      const a2 = document.createElement("a");
+      a2.href = b.lbUrl;
+      a2.target = "_blank";
+      a2.rel = "noopener";
+      a2.textContent = `${b.label}（LB）`;
+      a2.style.padding = "10px 12px";
+      a2.style.background = "#eef3ff";
+      a2.style.borderRadius = "12px";
+      a2.style.textDecoration = "none";
 
-    wrap.appendChild(a1);
-    wrap.appendChild(a2);
-    elBtnArea.appendChild(wrap);
+      wrap.appendChild(a1);
+      wrap.appendChild(a2);
+    });
+
+    area.appendChild(wrap);
+  }
+}
+
+// ----------------------------
+// 既読/いいね
+// ----------------------------
+async function postProgress(ymd, patch) {
+  const deviceId = getDeviceId();
+  await fetch(WORKER_ORIGIN + "/progress", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ deviceId, date: ymd, ...patch }),
+  }).catch(() => null);
+}
+
+async function loadProgress(limit = 60) {
+  const deviceId = getDeviceId();
+  return apiGet(`/progress?device=${encodeURIComponent(deviceId)}&limit=${limit}`);
+}
+
+// ----------------------------
+// 履歴一覧
+// ----------------------------
+function renderHistory(days, progressItems) {
+  const map = new Map();
+  (progressItems || []).forEach((it) => map.set(it.date, it));
+
+  const filtered = filterUnread
+    ? days.filter((d) => !(map.get(d.ymd)?.read))
+    : days;
+
+  // stats
+  const total = days.length;
+  const readCount = days.filter((d) => map.get(d.ymd)?.read).length;
+  const unreadCount = total - readCount;
+  if (els.stats) els.stats.textContent = `既読 ${readCount} / 未読 ${unreadCount}`;
+
+  els.history.innerHTML = "";
+
+  filtered.forEach((d) => {
+    const p = map.get(d.ymd) || {};
+    const row = document.createElement("div");
+    row.style.display = "flex";
+    row.style.justifyContent = "space-between";
+    row.style.alignItems = "center";
+    row.style.padding = "10px 8px";
+    row.style.borderBottom = "1px solid #eee";
+    row.style.gap = "10px";
+
+    const left = document.createElement("div");
+    left.style.flex = "1";
+
+    const a = document.createElement("a");
+    a.href = `?date=${encodeURIComponent(d.ymd)}`;
+    a.textContent = `${p.read ? "✅" : "⬜"} ${d.date}（${d.weekday || ""}）  ${d.verse || ""}`;
+    a.style.textDecoration = "none";
+    a.style.color = "#111";
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      setQueryDate(d.ymd);
+      boot(); // 表示更新
+    });
+
+    left.appendChild(a);
+
+    const likeBtn = document.createElement("button");
+    likeBtn.textContent = p.liked ? "❤️" : "🤍";
+    likeBtn.style.fontSize = "18px";
+    likeBtn.addEventListener("click", async () => {
+      const next = !p.liked;
+      await postProgress(d.ymd, { liked: next, read: true });
+      boot();
+    });
+
+    row.appendChild(left);
+    row.appendChild(likeBtn);
+
+    els.history.appendChild(row);
   });
 }
 
-async function loadToday() {
-  clearError();
+// ----------------------------
+// 起動
+// ----------------------------
+async function boot() {
+  els.error.textContent = "";
 
-  const r = await fetch(WORKER_ORIGIN + "/today", { cache: "no-store" });
-  if (!r.ok) {
-    const t = await r.text().catch(() => "");
-    setError("読み込みに失敗しました（today）: " + r.status + " " + t);
+  // 1) 今日 or 指定日
+  const qd = getQueryDate();
+  const data = qd ? await apiGet(`/day?date=${encodeURIComponent(qd)}`) : await apiGet(`/today`);
+  if (!data.ok) {
+    els.error.textContent = data.error || "読み込みに失敗しました";
     return;
   }
 
-  const j = await r.json().catch(() => null);
-  if (!j?.ok) {
-    setError("読み込みに失敗しました（today）: " + (j?.error || "unknown"));
-    return;
-  }
+  // ページを開いたら既読にする
+  const ymd = data.ymd || qd;
+  if (ymd) await postProgress(ymd, { read: true });
 
-  if (elMeta) elMeta.textContent = `${j.date}（${j.weekday}）`;
-  if (elVerse) elVerse.textContent = j.verse || "";
+  // 2) Pushボタン状態
+  await refreshPushButtons();
 
-  renderButtons(j.buttons || []);
+  // 3) 今日表示
+  renderToday(data);
 
-  if (elComment) {
-    elComment.textContent = j.comment || "";
-  }
+  // 4) 履歴＆進捗
+  const daysRes = await apiGet("/days?limit=60");
+  const progRes = await loadProgress(120);
+
+  const days = daysRes.ok ? (daysRes.days || []) : [];
+  const prog = progRes.ok ? (progRes.items || []) : [];
+
+  renderHistory(days, prog);
 }
 
-// ----------------------------
-// boot
-// ----------------------------
-(async function boot() {
-  await ensureServiceWorker();
-  await refreshPushUI();
-  await loadToday();
-
-  if (elPushBtn) elPushBtn.addEventListener("click", enablePush);
-})();
-// ===== ② 起動時にバッジ＆通知を消す（Android対策） =====
-async function clearBadgesAndNotifications() {
-  // 1) Service Workerへ「通知を全部閉じて」と依頼
-  if ("serviceWorker" in navigator) {
-    try {
-      const reg = await navigator.serviceWorker.ready;
-      if (reg?.active) {
-        reg.active.postMessage({ type: "CLEAR_NOTIFICATIONS" });
-      }
-    } catch (e) {
-      // 失敗しても無視でOK
-    }
-  }
-
-  // 2) アプリアイコンの数字（Badge）を消す（対応端末のみ）
-  try {
-    if ("clearAppBadge" in navigator) {
-      await navigator.clearAppBadge();
-    } else if ("setAppBadge" in navigator) {
-      await navigator.setAppBadge(0);
-    }
-  } catch (e) {
-    // 失敗しても無視でOK
-  }
+if (els.filterUnread) {
+  els.filterUnread.addEventListener("click", () => {
+    filterUnread = !filterUnread;
+    els.filterUnread.textContent = filterUnread ? "全て表示" : "未読のみ";
+    boot();
+  });
 }
 
-// ページ表示時に実行
-window.addEventListener("load", clearBadgesAndNotifications);
-
-// アプリに戻ってきた時にも実行（効果高い）
-document.addEventListener("visibilitychange", () => {
-  if (document.visibilityState === "visible") clearBadgesAndNotifications();
-});
+boot();
