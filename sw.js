@@ -58,3 +58,12 @@ self.addEventListener("notificationclick", (event) => {
     return clients.openWindow(url);
   })());
 });
+// sw.js のどこか（末尾あたり）に追加
+self.addEventListener("message", (event) => {
+  if (event.data?.type !== "CLEAR_NOTIFICATIONS") return;
+
+  event.waitUntil((async () => {
+    const notifs = await self.registration.getNotifications();
+    notifs.forEach((n) => n.close());
+  })());
+});
