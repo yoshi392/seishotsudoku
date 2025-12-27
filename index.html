@@ -5,27 +5,30 @@
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>聖書通読</title>
 
-  <link rel="manifest" href="./manifest.webmanifest" />
   <meta name="theme-color" content="#ffffff" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-title" content="聖書通読" />
+
+  <link rel="manifest" href="./manifest.webmanifest" />
 </head>
 <body>
   <main style="font-family:system-ui;max-width:720px;margin:24px auto;padding:0 16px;">
     <h1>聖書通読</h1>
-<button id="btnInstall" style="display:none;">📲 アプリをインストール</button>
 
-    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
-      <button id="btnEnablePush" style="padding:10px 14px;font-weight:700;">🔔 通知を有効にする</button>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;align-items:center;margin:10px 0 12px;">
+      <button id="pushBtn" style="padding:10px 14px;font-weight:700;">🔔 通知を有効にする</button>
+      <button id="installBtn" style="padding:10px 14px;font-weight:700;display:none;">📲 アプリをインストール</button>
+      <span id="pushStatus" style="margin-left:6px;"></span>
     </div>
-    <div id="pushStatus" style="margin:6px 0 18px;"></div>
 
-    <div id="todayMeta" style="font-size:18px;font-weight:700;margin:10px 0;"></div>
-    <div id="todayVerse" style="font-size:22px;font-weight:800;margin:6px 0;"></div>
+    <div id="errorBox" style="display:none;background:#ffecec;border:1px solid #ffb3b3;padding:10px;border-radius:10px;margin:10px 0;"></div>
 
-    <div id="btnArea" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;"></div>
+    <div id="todayMeta" style="font-weight:700;margin:10px 0 6px;"></div>
+    <div id="todayVerse" style="font-size:22px;font-weight:800;margin:0 0 12px;"></div>
 
-    <div id="todayComment" style="white-space:pre-wrap;margin-top:16px;"></div>
+    <div id="btnArea" style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;"></div>
 
-    <div id="errorBox" style="margin-top:16px;color:#b00020;"></div>
+    <div id="todayComment" style="white-space:pre-wrap;line-height:1.7;margin-top:10px;"></div>
   </main>
 
   <script src="./app.js"></script>
