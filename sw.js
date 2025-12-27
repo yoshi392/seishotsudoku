@@ -29,7 +29,15 @@ self.addEventListener("push", (event) => {
       data: { url: data.url || "/" },
     };
 
-    await self.registration.showNotification(title, options);
+  await self.registration.showNotification(title, {
+  body: data.body || "",
+  data: { url: absUrl },
+
+  // ★追加：同じ通知を上書き
+  tag: "seishotsudoku-daily",     // 毎日の通知は1つに固定
+  renotify: false,               // 上書き時に再通知しない
+  // silent: true,               // 必要なら（音/バイブを抑える）
+});
   })());
 });
 
