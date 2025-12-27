@@ -7,186 +7,24 @@
   <link rel="manifest" href="./manifest.webmanifest" />
 </head>
 <body>
-  <main style="font-family:system-ui;max-width:720px;margin:24px auto;padding:0 16px;">
+  <main style="font-family:system-ui;max-width:780px;margin:24px auto;padding:0 16px;">
     <h1>聖書通読</h1>
 
-    <!-- 通知はこのボタン1つだけ -->
-    <button id="btnEnable" style="padding:10px 14px;font-weight:700;">🔔 通知を有効にする</button>
-    <button id="btnTest" style="padding:10px 14px;margin-left:8px;">🔔 表示テスト（Push送信）</button>
-    <div id="pushStatus" style="margin-top:8px;"></div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap;margin:12px 0;">
+      <button id="btnEnablePush" style="padding:10px 14px;font-weight:800;">🔔 通知を有効にする</button>
+    </div>
 
-    <hr style="margin:16px 0;" />
+    <div id="pushStatus" style="margin:8px 0;color:#333;"></div>
 
-    <div id="today" style="font-weight:700;margin:10px 0;"></div>
+    <div id="today" style="margin:10px 0;font-weight:700;"></div>
 
-    <div id="content" style="white-space:pre-wrap;line-height:1.6;"></div>
+    <section id="content" style="background:#fff;border-radius:16px;padding:14px;box-shadow:0 6px 18px rgba(0,0,0,.08);"></section>
 
-    <div id="linkArea" style="display:flex;gap:10px;flex-wrap:wrap;margin:14px 0;"></div>
+    <div id="links" style="margin:12px 0;display:flex;gap:10px;flex-wrap:wrap;"></div>
+
+    <div id="err" style="margin-top:12px;color:#b00020;white-space:pre-wrap;"></div>
   </main>
 
-  <script>
-    // ★ Worker
-    const WORKER_ORIGIN = "https://seishotsudoku-push.teruntyo.workers.dev";
-
-    // ★ VAPID 公開鍵（改行や空白は絶対NG）
-    const VAPID_PUBLIC_KEY = "BP51V69QOr3LWj2YhzcVO05ojPb9R_VRiMcNciBxPkOXbBtsYZMuJOxgrpVcr755ixYsWK5hVDJLXSgYpTWfM_I";
-
-    const btnEnable = document.getElementById("btnEnable");
-    const btnTest = document.getElementById("btnTest");
-    const statusEl = document.getElementById("pushStatus");
-    const todayEl = document.getElementById("today");
-    const contentEl = document.getElementById("content");
-    const linkArea = document.getElementById("linkArea");
-
-    function setStatus(msg){ statusEl.textContent = msg; }
-
-    function urlBase64ToUint8Array(base64String) {
-      const padding = "=".repeat((4 - base64String.length % 4) % 4);
-      const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-      const rawData = atob(base64);
-      const outputArray = new Uint8Array(rawData.length);
-      for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
-      return outputArray;
-    }
-
-    async function getReg() {
-      // ★ project pagesは scope を安定させるため「絶対パス」が安全
-      return navigator.serviceWorker.register("/seishotsudoku/sw.js");
-    }
-
-    async function refreshSubStatus() {
-      if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-        setStatus("この端末/ブラウザはPush通知に対応していません（iOSは16.4+ / AndroidはChrome推奨）");
-        btnEnable.disabled = true;
-        return;
-      }
-      const reg = await navigator.serviceWorker.ready;
-      const sub = await reg.pushManager.getSubscription();
-      if (sub) {
-        setStatus("✅ 通知：有効");
-        btnEnable.style.display = "none"; // 有効ならボタン消す
-      } else {
-        setStatus("通知：未設定");
-        btnEnable.style.display = "";
-      }
-    }
-
-    async function enablePush(){
-      try{
-        setStatus("準備中…");
-
-        if (!("serviceWorker" in navigator)) {
-          setStatus("このブラウザはService Worker非対応です");
-          return;
-        }
-        if (!("PushManager" in window)) {
-          setStatus("この端末/ブラウザはPush通知に対応していません（iOSは16.4+ / AndroidはChrome推奨）");
-          return;
-        }
-
-        const reg = await getReg();
-
-        const perm = await Notification.requestPermission();
-        if (perm !== "granted") {
-          setStatus("通知が許可されませんでした（端末設定で通知をONにしてください）");
-          return;
-        }
-
-        const sub = await reg.pushManager.subscribe({
-          userVisibleOnly: true,
-          applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-        });
-
-        const res = await fetch(WORKER_ORIGIN + "/subscribe", {
-          method: "POST",
-          headers: {"Content-Type":"application/json"},
-          body: JSON.stringify(sub),
-        });
-
-        const t = await res.text();
-        if (!res.ok) {
-          setStatus("subscribe失敗: " + res.status + " " + t);
-          return;
-        }
-
-        setStatus("✅ 通知：有効（登録OK）");
-        btnEnable.style.display = "none"; // 有効化後に消す
-      } catch(e){
-        setStatus("エラー: " + (e?.message || String(e)));
-      }
-    }
-
-    async function sendTestPush(){
-      setStatus("テスト送信中…");
-      const res = await fetch(WORKER_ORIGIN + "/send", {
-        method: "POST",
-        headers: {"Content-Type":"application/json"},
-        body: JSON.stringify({
-          title: "テスト",
-          body: "いま届く？",
-          url: location.href
-        }),
-      });
-      const j = await res.json().catch(()=>null);
-      if (!res.ok || !j) {
-        setStatus("テスト送信失敗: " + res.status);
-        return;
-      }
-      setStatus(`テスト送信OK（sent:${j.sent} failed:${j.failed}）`);
-    }
-
-    function renderLinks(payload){
-      linkArea.innerHTML = "";
-      const mkBtn = (label, href) => {
-        const a = document.createElement("a");
-        a.textContent = label;
-        a.href = href;
-        a.target = "_blank";
-        a.rel = "noopener";
-        a.style.cssText = "display:inline-block;padding:10px 14px;border:1px solid #ccc;border-radius:10px;text-decoration:none;";
-        return a;
-      };
-
-      // ▼ ここは「以前GASの2ボタン」を再現（Workerが返すURLを使う）
-      if (payload.studyUrl) linkArea.appendChild(mkBtn("📖 バイブルスタディ", payload.studyUrl));
-      if (payload.audioUrl) linkArea.appendChild(mkBtn("🎧 ともに聴く聖書", payload.audioUrl));
-
-      if (payload.url) linkArea.appendChild(mkBtn("🔗 開く", payload.url));
-    }
-
-    async function loadToday(){
-      const qs = new URLSearchParams(location.search);
-      const date = qs.get("date") || "";
-
-      const u = new URL(WORKER_ORIGIN + "/today");
-      if (date) u.searchParams.set("date", date);
-
-      const res = await fetch(u.toString(), { cache: "no-store" });
-      const payload = await res.json().catch(()=>null);
-
-      if (!res.ok || !payload?.ok) {
-        todayEl.textContent = "読み込みに失敗しました";
-        contentEl.textContent = payload?.error || ("HTTP " + res.status);
-        return;
-      }
-
-      todayEl.textContent = payload.date ? `📅 ${payload.date}` : "";
-      contentEl.textContent = [payload.title, payload.verse, payload.comment].filter(Boolean).join("\n\n");
-      renderLinks(payload);
-    }
-
-    btnEnable.addEventListener("click", enablePush);
-    btnTest.addEventListener("click", sendTestPush);
-
-    // 初期化
-    (async()=>{
-      if ("serviceWorker" in navigator) {
-        // readyを安定させるため先にregister
-        await getReg().catch(()=>{});
-      }
-      await refreshSubStatus();
-      await loadToday();
-    })();
-  </script>
+  <script src="./app.js"></script>
 </body>
 </html>
