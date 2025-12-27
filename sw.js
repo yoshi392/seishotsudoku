@@ -3,11 +3,7 @@ self.addEventListener("activate", (event) => event.waitUntil(self.clients.claim(
 
 self.addEventListener("push", (event) => {
   let data = {};
-  try {
-    data = event.data ? event.data.json() : {};
-  } catch {
-    data = {};
-  }
+  try { data = event.data ? event.data.json() : {}; } catch { data = {}; }
 
   const target = new URL(data.url || "", self.registration.scope).href;
 
