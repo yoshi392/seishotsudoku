@@ -1,4 +1,6 @@
 // sw.js
+const TAG = "seishotsudoku-daily";
+
 self.addEventListener("install", (event) => {
   self.skipWaiting();
 });
@@ -11,10 +13,8 @@ self.addEventListener("push", (event) => {
   event.waitUntil((async () => {
     let data = {};
     try {
-      // JSONとして来る場合
       data = event.data ? event.data.json() : {};
     } catch {
-      // 文字列JSONの場合
       try {
         const txt = event.data ? await event.data.text() : "";
         data = txt ? JSON.parse(txt) : {};
@@ -24,31 +24,33 @@ self.addEventListener("push", (event) => {
     }
 
     const title = data.title || "聖書通読";
-    const options = {
+    const url = data.url || "/";
+
+    // ★同じTAGの通知を消してから1件だけ出す（バッジが溜まらない）
+    const old = await self.registration.getNotifications({ tag: TAG });
+    old.forEach((n) => n.close());
+
+    await self.registration.showNotification(title, {
       body: data.body || "",
-      data: { url: data.url || "/" },
-    };
-
-  await self.registration.showNotification(title, {
-  body: data.body || "",
-  data: { url: absUrl },
-
-  // ★追加：同じ通知を上書き
-  tag: "seishotsudoku-daily",     // 毎日の通知は1つに固定
-  renotify: false,               // 上書き時に再通知しない
-  // silent: true,               // 必要なら（音/バイブを抑える）
-});
+      tag: TAG,
+      renotify: false,
+      requireInteraction: false,
+      data: { url },
+      // icon: "/seishotsudoku/icons/icon-192.png", // 置いてあるなら有効化
+      // badge: "/seishotsudoku/icons/badge-72.png", // あれば
+    });
   })());
 });
 
 self.addEventListener("notificationclick", (event) => {
   event.notification.close();
-  const url = (event.notification && event.notification.data && event.notification.data.url)
-    ? event.notification.data.url
-    : "/";
+  const url = event.notification?.data?.url || "/";
 
   event.waitUntil((async () => {
-    // 既に開いてるタブがあればそこへ
+    // ★クリック時にも同TAG通知を消す（バッジ減りやすい）
+    const old = await self.registration.getNotifications({ tag: TAG });
+    old.forEach((n) => n.close());
+
     const allClients = await clients.matchAll({ type: "window", includeUncontrolled: true });
     for (const c of allClients) {
       if (c.url === url && "focus" in c) return c.focus();
