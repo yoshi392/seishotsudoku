@@ -31,19 +31,36 @@
     (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
     window.navigator.standalone === true;
 
+  function resetIfNewYear() {
+    const nowYear = String(new Date().getFullYear());
+    const key = "lastYear";
+    const saved = localStorage.getItem(key);
+    if (saved === nowYear) return;
+    const toDelete = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith("read:") || k.startsWith("like:"))) toDelete.push(k);
+    }
+    toDelete.forEach((k) => localStorage.removeItem(k));
+    localStorage.setItem(key, nowYear);
+  }
+
   function storageKeyRead(ymd) { return `read:${ymd}`; }
   function storageKeyLike(ymd) { return `like:${ymd}`; }
   function isRead(ymd) { return localStorage.getItem(storageKeyRead(ymd)) === "1"; }
   function isLiked(ymd) { return localStorage.getItem(storageKeyLike(ymd)) === "1"; }
   function setRead(ymd, on) { localStorage.setItem(storageKeyRead(ymd), on ? "1" : "0"); }
   function setLike(ymd, on) { localStorage.setItem(storageKeyLike(ymd), on ? "1" : "0"); }
-
   function setText(el, value) { if (el) el.textContent = value ?? ""; }
 
   async function fetchJson(path) {
     const url = `${API_BASE}${path}`;
     const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    if (!res.ok) {
+      const msg = `${res.status} ${res.statusText}`;
+      setText(els.pushStatus, `データ取得に失敗しました: ${msg}`);
+      throw new Error(msg);
+    }
     return res.json();
   }
 
@@ -107,14 +124,14 @@
   }
 
   function renderToday(t) {
-    if (!t || !t.date) return;
+    if (!t) return;
     const ymd = normalizeDate(t.date) || todayYmdLocal();
     todayYmd = ymd;
 
     const titleText = t.title || t.verse || "今日の聖句";
     const verseText = t.verse && t.verse !== titleText ? t.verse : "";
 
-    setText(els.todayDate, `${t.date} ${t.weekday || ""}`.trim());
+    setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
     setText(els.todayTitle, titleText);
     setText(els.todayVerse, verseText);
     if (els.todayVerse) els.todayVerse.style.display = verseText ? "block" : "none";
@@ -166,13 +183,25 @@
         left.append(verse);
       }
 
+      // カード全体クリックで聖書箇所を開く（PRS優先→LB）
+      const primaryLink =
+        (d.buttons && d.buttons[0] && (d.buttons[0].prsUrl || d.buttons[0].lbUrl)) || "";
+      if (primaryLink) {
+        li.style.cursor = "pointer";
+        li.addEventListener("click", (e) => {
+          if (e.target.tagName === "BUTTON") return; // ボタン操作は無視
+          window.open(primaryLink, "_blank", "noopener");
+        });
+      }
+
       const controls = document.createElement("div");
       controls.className = "controls";
 
       const btnRead = document.createElement("button");
       btnRead.textContent = isRead(d.ymd) ? "📖 既読" : "📖 未読";
       btnRead.className = "pill";
-      btnRead.addEventListener("click", () => {
+      btnRead.addEventListener("click", (ev) => {
+        ev.stopPropagation();
         const now = !isRead(d.ymd);
         setRead(d.ymd, now);
         renderList();
@@ -182,7 +211,8 @@
       const btnLike = document.createElement("button");
       btnLike.textContent = isLiked(d.ymd) ? "♥ いいね済" : "♡ いいね";
       btnLike.className = "pill secondary";
-      btnLike.addEventListener("click", () => {
+      btnLike.addEventListener("click", (ev) => {
+        ev.stopPropagation();
         const now = !isLiked(d.ymd);
         setLike(d.ymd, now);
         renderList();
@@ -334,6 +364,7 @@
   }
 
   function init() {
+    resetIfNewYear();
     bindEvents();
     updateInstallUi();
     loadData();
