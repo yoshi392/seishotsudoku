@@ -1,433 +1,308 @@
-// app.js (front-end) — index.html とID一致版
+(() => {
+  const cfg = window.__CONFIG__ || {};
+  const API_BASE = (cfg.WORKER_ORIGIN || "").replace(/\/+$/, "") || location.origin;
+  const VAPID_KEY = cfg.VAPID_PUBLIC_KEY || "";
+  const qs = (id) => document.getElementById(id);
 
-const CONFIG = window.__CONFIG__ || {};
-const WORKER_ORIGIN = String(CONFIG.WORKER_ORIGIN || "").replace(/\/$/, "");
-const VAPID_PUBLIC_KEY = String(CONFIG.VAPID_PUBLIC_KEY || "").trim();
+  const els = {
+    btnPush: qs("btnPush"),
+    pushStatus: qs("pushStatus"),
+    btnInstall: qs("btnInstall"),
+    btnLike: qs("btnLike"),
+    btnTodayRead: qs("btnTodayRead"),
+    todayDate: qs("todayDate"),
+    todayTitle: qs("todayTitle"),
+    todayVerse: qs("todayVerse"),
+    todayButtons: qs("todayButtons"),
+    todayComment: qs("todayComment"),
+    btnFilterUnread: qs("btnFilterUnread"),
+    btnFilterAll: qs("btnFilterAll"),
+    countRead: qs("countRead"),
+    countUnread: qs("countUnread"),
+    list: qs("list"),
+  };
 
-// ---- DOM
-const btnPush = document.getElementById("btnPush");
-const elPushStatus = document.getElementById("pushStatus");
-const btnInstall = document.getElementById("btnInstall");
+  let installPrompt = null;
+  let days = [];
+  let todayYmd = "";
+  let filter = "unread";
 
-const btnLike = document.getElementById("btnLike");
-const elTodayDate = document.getElementById("todayDate");
-const elTodayVerse = document.getElementById("todayVerse");
-const elTodayButtons = document.getElementById("todayButtons");
-const elTodayComment = document.getElementById("todayComment");
-
-const btnFilterUnread = document.getElementById("btnFilterUnread");
-const btnFilterAll = document.getElementById("btnFilterAll");
-const elCountRead = document.getElementById("countRead");
-const elCountUnread = document.getElementById("countUnread");
-const elList = document.getElementById("list");
-
-// ---- state
-let daysCache = [];
-let showUnreadOnly = true;
-let selectedYmd = "";
-
-// Android install prompt
-let deferredInstallPrompt = null;
-
-// ---- helpers
-function isIOS() {
-  const ua = navigator.userAgent || "";
-  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-}
-function isStandalone() {
-  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
-}
-function ymdLocal(d) {
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const da = String(d.getDate()).padStart(2, "0");
-  return `${y}-${m}-${da}`;
-}
-function normalizeDateAny(s) {
-  const t = String(s || "").trim();
-  if (!t) return "";
-  if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(t)) {
-    const [y, m, d] = t.split("/").map((x) => x.padStart(2, "0"));
-    return `${y}-${m}-${d}`;
-  }
-  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
-  return "";
-}
-function formatDisplayDate(ymd) {
-  const [y, m, d] = ymd.split("-");
-  return `${y}/${m}/${d}`;
-}
-function getQueryDate() {
-  const u = new URL(location.href);
-  const q = u.searchParams.get("date");
-  return normalizeDateAny(q);
-}
-function setQueryDate(ymd) {
-  const u = new URL(location.href);
-  u.searchParams.set("date", ymd);
-  history.pushState({}, "", u.toString());
-}
-
-// localStorage keys
-function kRead(ymd) { return `read:${ymd}`; }
-function kLike(ymd) { return `like:${ymd}`; }
-function isRead(ymd) { return localStorage.getItem(kRead(ymd)) === "1"; }
-function setRead(ymd, v) { localStorage.setItem(kRead(ymd), v ? "1" : "0"); }
-function isLiked(ymd) { return localStorage.getItem(kLike(ymd)) === "1"; }
-function setLiked(ymd, v) { localStorage.setItem(kLike(ymd), v ? "1" : "0"); }
-
-// ---- SW register + timeout
-async function registerSW() {
-  if (!("serviceWorker" in navigator)) return null;
-
-  // scopeを /seishotsudoku/ に合わせるため相対で登録
-  await navigator.serviceWorker.register("./sw.js");
-
-  // ready が永久待ちにならないようタイムアウト
-  const ready = navigator.serviceWorker.ready;
-  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("SW ready timeout")), 8000));
-  return await Promise.race([ready, timeout]).catch(() => null);
-}
-
-function urlBase64ToUint8Array(base64String) {
-  const padding = "=".repeat((4 - base64String.length % 4) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = atob(base64);
-  const outputArray = new Uint8Array(rawData.length);
-  for (let i = 0; i < rawData.length; ++i) outputArray[i] = rawData.charCodeAt(i);
-  return outputArray;
-}
-
-// ---- Push UI
-async function refreshPushUI(reg) {
-  if (!btnPush || !elPushStatus) return;
-
-  // iOS Safari は「ホーム画面に追加」しないと PushManager が出ない
-  if (!("PushManager" in window)) {
-    if (isIOS() && !isStandalone()) {
-      elPushStatus.textContent = "Push通知を有効にするには、ホーム画面に追加してください。";
-    } else {
-      elPushStatus.textContent = "この端末/ブラウザでは通知を使えません。";
-    }
-    btnPush.disabled = true;
-    return;
+  function setText(el, value) {
+    if (!el) return;
+    el.textContent = value ?? "";
   }
 
-  const sub = await reg?.pushManager?.getSubscription?.().catch(() => null);
-  if (sub) {
-    elPushStatus.textContent = "✅ 通知は有効です";
-    btnPush.hidden = true;
-  } else {
-    elPushStatus.textContent = "";
-    btnPush.hidden = false;
-    btnPush.disabled = false;
+  function storageKeyRead(ymd) {
+    return `read:${ymd}`;
   }
-}
-
-async function enablePush() {
-  if (!WORKER_ORIGIN) {
-    alert("WORKER_ORIGIN が空です（index.html の __CONFIG__ を確認してください）");
-    return;
+  function storageKeyLike(ymd) {
+    return `like:${ymd}`;
   }
-  if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.length < 20) {
-    alert("VAPID 公開鍵が未設定です（index.html の __CONFIG__ を確認してください）");
-    return;
+  function isRead(ymd) {
+    return localStorage.getItem(storageKeyRead(ymd)) === "1";
+  }
+  function isLiked(ymd) {
+    return localStorage.getItem(storageKeyLike(ymd)) === "1";
+  }
+  function setRead(ymd, on) {
+    localStorage.setItem(storageKeyRead(ymd), on ? "1" : "0");
+  }
+  function setLike(ymd, on) {
+    localStorage.setItem(storageKeyLike(ymd), on ? "1" : "0");
   }
 
-  btnPush.disabled = true;
-  elPushStatus.textContent = "準備中…";
-
-  try {
-    const reg = await registerSW();
-    if (!reg) throw new Error("Service Worker の登録に失敗しました");
-
-    if (!("PushManager" in window)) {
-      throw new Error(isIOS() ? "ホーム画面に追加してから開いてください" : "この端末/ブラウザでは通知を使えません");
-    }
-
-    const perm = await Notification.requestPermission();
-    if (perm !== "granted") throw new Error("通知が許可されていません（端末の設定で許可してください）");
-
-    const sub = await reg.pushManager.subscribe({
-      userVisibleOnly: true,
-      applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
-    });
-
-    const res = await fetch(WORKER_ORIGIN + "/subscribe", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(sub),
-    });
-
-    if (!res.ok) {
-      const t = await res.text().catch(() => "");
-      throw new Error(`subscribe 失敗: ${res.status} ${t}`);
-    }
-
-    await refreshPushUI(reg);
-  } catch (e) {
-    alert(String(e?.message || e));
-    elPushStatus.textContent = "";
-    btnPush.disabled = false;
-  }
-}
-
-// ---- fetch helpers
-async function fetchJson(path) {
-  const r = await fetch(WORKER_ORIGIN + path, { cache: "no-store" });
-  const j = await r.json().catch(() => null);
-  if (!r.ok) {
-    const msg = (j && j.error) ? j.error : `HTTP ${r.status}`;
-    throw new Error(msg);
-  }
-  return j;
-}
-
-// ---- render today (from a day object)
-function renderToday(day) {
-  const ymd = normalizeDateAny(day?.date) || ymdLocal(new Date());
-  selectedYmd = ymd;
-
-  if (elTodayDate) {
-    const w = day?.weekday ? `（${day.weekday}）` : "";
-    elTodayDate.textContent = `${formatDisplayDate(ymd)} ${w}`.trim();
-  }
-  if (elTodayVerse) elTodayVerse.textContent = day?.verse || day?.title || "今日の聖書箇所";
-  if (elTodayComment) elTodayComment.textContent = day?.comment || "";
-
-  if (elTodayButtons) {
-    elTodayButtons.innerHTML = "";
-    const btns = Array.isArray(day?.buttons) ? day.buttons : [];
-    for (const b of btns) {
-      const row = document.createElement("div");
-      row.className = "btnRow";
-
-      const a1 = document.createElement("a");
-      a1.className = "btn";
-      a1.href = b.prsUrl || "#";
-      a1.target = "_blank";
-      a1.rel = "noopener";
-      a1.textContent = `${b.label}（新改訳2017）`;
-
-      const a2 = document.createElement("a");
-      a2.className = "btn btnLb";
-      a2.href = b.lbUrl || "#";
-      a2.target = "_blank";
-      a2.rel = "noopener";
-      a2.textContent = `${b.label}（LB）`;
-
-      row.appendChild(a1);
-      row.appendChild(a2);
-      elTodayButtons.appendChild(row);
-    }
+  function todayYmdLocal() {
+    const d = new Date();
+    const y = d.getFullYear();
+    const m = String(d.getMonth() + 1).padStart(2, "0");
+    const da = String(d.getDate()).padStart(2, "0");
+    return `${y}-${m}-${da}`;
   }
 
-  // like（今日のハート）
-  if (btnLike) {
-    const liked = isLiked(ymd);
-    btnLike.textContent = liked ? "♥" : "♡";
-    btnLike.setAttribute("aria-pressed", liked ? "true" : "false");
-    btnLike.onclick = () => {
-      const now = !isLiked(ymd);
-      setLiked(ymd, now);
-      setRead(ymd, true);
-      btnLike.textContent = now ? "♥" : "♡";
-      btnLike.setAttribute("aria-pressed", now ? "true" : "false");
+  async function fetchJson(path) {
+    const url = `${API_BASE}${path}`;
+    const res = await fetch(url, { headers: { "Accept": "application/json" } });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  }
+
+  async function loadData() {
+    try {
+      const [todayRes, daysRes] = await Promise.all([
+        fetchJson("/today"),
+        fetchJson("/days?limit=365"),
+      ]);
+
+      const daysArr = Array.isArray(daysRes) ? daysRes : daysRes.days || [];
+      days = sanitizeDays(daysArr);
+      if (todayRes?.date) todayYmd = normalizeDate(todayRes.date) || todayYmdLocal();
+
+      renderToday(todayRes);
       renderList();
-      updateCounts();
-    };
+    } catch (e) {
+      setText(els.pushStatus, `データ取得に失敗しました: ${e.message}`);
+    }
   }
 
-  // 開いたら既読扱い（必要なら外してOK）
-  setRead(ymd, true);
-  renderList();
-  updateCounts();
-}
-
-// ---- list
-function updateCounts() {
-  const items = daysCache;
-  let read = 0, unread = 0;
-  for (const it of items) {
-    const ymd = normalizeDateAny(it.date);
-    if (!ymd) continue;
-    if (isRead(ymd)) read++; else unread++;
+  function sanitizeDays(arr) {
+    const today = todayYmdLocal();
+    return (arr || [])
+      .map((d) => {
+        const ymd = normalizeDate(d.ymd || d.date || d.dateRaw || d.dateText || "");
+        if (!ymd) return null;
+        return {
+          ymd,
+          date: d.date || ymd.replaceAll("-", "/"),
+          weekday: d.weekday || "",
+          title: d.title || "今日の聖句",
+          verse: d.verse || "",
+          comment: d.comment || "",
+          buttons: normalizeButtons(d.buttons, d.urls),
+        };
+      })
+      .filter(Boolean)
+      .filter((d) => d.ymd <= today)
+      .sort((a, b) => (a.ymd < b.ymd ? 1 : -1));
   }
-  if (elCountRead) elCountRead.textContent = String(read);
-  if (elCountUnread) elCountUnread.textContent = String(unread);
-}
 
-function renderList() {
-  if (!elList) return;
-  elList.innerHTML = "";
+  function normalizeButtons(buttons, urls) {
+    if (Array.isArray(buttons) && buttons.length) return buttons;
+    if (!Array.isArray(urls)) return [];
+    return urls.map((u, i) => ({
+      label: `リンク${urls.length > 1 ? `(${i + 1})` : ""}`,
+      prsUrl: u,
+      lbUrl: u,
+    }));
+  }
 
-  const today = ymdLocal(new Date());
+  function normalizeDate(v) {
+    const s = String(v || "").trim();
+    if (!s) return "";
+    const m = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+    if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+    return "";
+  }
 
-  const items = daysCache
-    .map(d => ({...d, _ymd: normalizeDateAny(d.date)}))
-    .filter(d => d._ymd)
-    // ★未来は出さない（今日まで）
-    .filter(d => d._ymd <= today)
-    // ★降順（新しい日付が上）
-    .sort((a,b) => (a._ymd < b._ymd ? 1 : -1));
+  function renderToday(t) {
+    if (!t || !t.date) return;
+    const ymd = normalizeDate(t.date) || todayYmdLocal();
+    todayYmd = ymd;
 
-  const filtered = showUnreadOnly
-    ? items.filter(d => !isRead(d._ymd))
-    : items;
+    setText(els.todayDate, `${t.date} ${t.weekday || ""}`.trim());
+    setText(els.todayTitle, t.title || "今日の聖句");
+    setText(els.todayVerse, t.verse || "");
+    setText(els.todayComment, t.comment || "");
+    renderButtons(els.todayButtons, t.buttons || []);
+    updateTodayButtons(ymd);
+  }
 
-  for (const d of filtered) {
-    const ymd = d._ymd;
-    const li = document.createElement("li");
+  function renderButtons(container, buttons) {
+    if (!container) return;
+    container.innerHTML = "";
+    (buttons || []).forEach((b) => {
+      const a1 = document.createElement("a");
+      a1.href = b.prsUrl || b.lbUrl || "#";
+      a1.target = "_blank";
+      a1.rel = "noopener noreferrer";
+      a1.textContent = b.label || "リンク";
+      container.appendChild(a1);
+    });
+  }
 
-    const row = document.createElement("div");
-    row.className = "row";
+  function renderList() {
+    if (!els.list) return;
+    els.list.innerHTML = "";
+    const filtered = filter === "unread" ? days.filter((d) => !isRead(d.ymd)) : days;
 
-    const left = document.createElement("div");
-    left.className = "left";
+    filtered.forEach((d) => {
+      const li = document.createElement("li");
+      li.className = "item";
 
-    const check = document.createElement("div");
-    check.className = "check" + (isRead(ymd) ? " on" : "");
-    check.title = "既読";
-    check.onclick = (ev) => {
-      ev.stopPropagation();
-      const now = !isRead(ymd);
-      setRead(ymd, now);
-      check.className = "check" + (now ? " on" : "");
-      updateCounts();
-      if (showUnreadOnly) renderList();
-    };
+      const left = document.createElement("div");
+      const meta = document.createElement("div");
+      meta.className = "meta";
+      meta.textContent = `${d.date} ${d.weekday}`.trim();
+      const title = document.createElement("div");
+      title.className = "title";
+      title.textContent = d.title;
+      const verse = document.createElement("div");
+      verse.className = "meta";
+      verse.textContent = d.verse;
+      left.append(meta, title, verse);
 
-    const mainBtn = document.createElement("button");
-    mainBtn.className = "rowMain";
-    mainBtn.type = "button";
-    mainBtn.onclick = () => {
-      setQueryDate(ymd);
-      setRead(ymd, true);
-      renderToday(d);
-    };
+      const controls = document.createElement("div");
+      controls.className = "controls";
 
-    const dateDiv = document.createElement("div");
-    dateDiv.className = "rowDate";
-    const w = d.weekday ? `（${d.weekday}）` : "";
-    dateDiv.textContent = `${formatDisplayDate(ymd)} ${w}`.trim();
+      const btnRead = document.createElement("button");
+      btnRead.textContent = isRead(d.ymd) ? "✔️ 既読" : "📖 未読";
+      btnRead.className = "pill";
+      btnRead.addEventListener("click", () => {
+        const now = !isRead(d.ymd);
+        setRead(d.ymd, now);
+        renderList();
+        updateTodayButtons(todayYmd);
+      });
 
-    const verseDiv = document.createElement("div");
-    verseDiv.className = "rowVerse";
-    verseDiv.textContent = d.verse || d.title || "";
+      const btnLike = document.createElement("button");
+      btnLike.textContent = isLiked(d.ymd) ? "♥ いいね済" : "♡ いいね";
+      btnLike.className = "pill secondary";
+      btnLike.addEventListener("click", () => {
+        const now = !isLiked(d.ymd);
+        setLike(d.ymd, now);
+        renderList();
+        if (d.ymd === todayYmd) updateTodayButtons(todayYmd);
+      });
 
-    mainBtn.appendChild(dateDiv);
-    mainBtn.appendChild(verseDiv);
+      controls.append(btnRead, btnLike);
+      li.append(left, controls);
+      els.list.appendChild(li);
+    });
 
-    left.appendChild(check);
-    left.appendChild(mainBtn);
+    const readCount = days.filter((d) => isRead(d.ymd)).length;
+    const unreadCount = days.length - readCount;
+    setText(els.countRead, readCount);
+    setText(els.countUnread, unreadCount);
+  }
 
-    const heart = document.createElement("button");
-    heart.className = "heart";
-    heart.type = "button";
-    heart.textContent = isLiked(ymd) ? "♥" : "♡";
-    heart.onclick = (ev) => {
-      ev.stopPropagation();
-      const now = !isLiked(ymd);
-      setLiked(ymd, now);
-      setRead(ymd, true);
-      heart.textContent = now ? "♥" : "♡";
-      updateCounts();
-      if (showUnreadOnly) renderList();
-      // 今日表示中のハートも同期
-      if (selectedYmd === ymd && btnLike) {
-        btnLike.textContent = now ? "♥" : "♡";
-        btnLike.setAttribute("aria-pressed", now ? "true" : "false");
+  function updateTodayButtons(ymd) {
+    if (els.btnTodayRead) {
+      els.btnTodayRead.textContent = isRead(ymd) ? "✔️ 既読済み" : "✔️ 既読にする";
+    }
+    if (els.btnLike) {
+      els.btnLike.textContent = isLiked(ymd) ? "♥ いいね済" : "♡ いいね";
+    }
+  }
+
+  function bindEvents() {
+    if (els.btnFilterUnread) els.btnFilterUnread.addEventListener("click", () => {
+      filter = "unread";
+      renderList();
+    });
+    if (els.btnFilterAll) els.btnFilterAll.addEventListener("click", () => {
+      filter = "all";
+      renderList();
+    });
+    if (els.btnLike) els.btnLike.addEventListener("click", () => {
+      if (!todayYmd) return;
+      const now = !isLiked(todayYmd);
+      setLike(todayYmd, now);
+      updateTodayButtons(todayYmd);
+      renderList();
+    });
+    if (els.btnTodayRead) els.btnTodayRead.addEventListener("click", () => {
+      if (!todayYmd) return;
+      const now = !isRead(todayYmd);
+      setRead(todayYmd, now);
+      updateTodayButtons(todayYmd);
+      renderList();
+    });
+
+    window.addEventListener("beforeinstallprompt", (e) => {
+      e.preventDefault();
+      installPrompt = e;
+      if (els.btnInstall) els.btnInstall.disabled = false;
+    });
+
+    if (els.btnInstall) els.btnInstall.addEventListener("click", async () => {
+      if (!installPrompt) return;
+      installPrompt.prompt();
+      await installPrompt.userChoice;
+      installPrompt = null;
+      els.btnInstall.disabled = true;
+    });
+
+    if (els.btnPush) els.btnPush.addEventListener("click", enablePush);
+  }
+
+  async function enablePush() {
+    if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
+      setText(els.pushStatus, "Push非対応のブラウザです");
+      return;
+    }
+    try {
+      setText(els.pushStatus, "通知を準備中…");
+      const reg = await registerServiceWorker();
+      const perm = await Notification.requestPermission();
+      if (perm !== "granted") {
+        setText(els.pushStatus, "通知が許可されませんでした");
+        return;
       }
-    };
-
-    row.appendChild(left);
-    row.appendChild(heart);
-    li.appendChild(row);
-    elList.appendChild(li);
-  }
-}
-
-// ---- load data
-async function loadDays() {
-  // サーバ仕様が変わっても耐える（配列 / {days:[]} どっちでも）
-  const j = await fetchJson("/days?limit=365");
-  const arr = Array.isArray(j) ? j : (j.days || j.list || []);
-  daysCache = Array.isArray(arr) ? arr : [];
-}
-
-async function loadTodayFromCacheOrApi() {
-  const q = getQueryDate();
-  const todayYmd = ymdLocal(new Date());
-  const target = q || todayYmd;
-
-  // daysCacheから探す
-  const hit = daysCache.find(d => normalizeDateAny(d.date) === target);
-  if (hit) {
-    renderToday(hit);
-    return;
+      const sub = await reg.pushManager.subscribe({
+        userVisibleOnly: true,
+        applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
+      });
+      await fetch(`${API_BASE}/subscribe`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(sub),
+      });
+      setText(els.pushStatus, "通知を登録しました");
+    } catch (e) {
+      setText(els.pushStatus, `通知設定に失敗: ${e.message}`);
+    }
   }
 
-  // だめなら /today を読む（あなたのWorkerが返す形式に合わせる）
-  const t = await fetchJson("/today");
-  // /today が単体オブジェクトならそれを使う
-  renderToday(t);
-}
-
-// ---- install prompt (Android)
-window.addEventListener("beforeinstallprompt", (e) => {
-  e.preventDefault();
-  deferredInstallPrompt = e;
-  if (btnInstall) btnInstall.hidden = false;
-});
-if (btnInstall) {
-  btnInstall.addEventListener("click", async () => {
-    if (!deferredInstallPrompt) return;
-    deferredInstallPrompt.prompt();
-    await deferredInstallPrompt.userChoice.catch(() => null);
-    deferredInstallPrompt = null;
-    btnInstall.hidden = true;
-  });
-}
-
-// ---- events
-if (btnPush) btnPush.addEventListener("click", enablePush);
-
-if (btnFilterUnread) btnFilterUnread.addEventListener("click", () => {
-  showUnreadOnly = true;
-  btnFilterUnread.classList.add("active");
-  btnFilterAll.classList.remove("active");
-  renderList();
-});
-
-if (btnFilterAll) btnFilterAll.addEventListener("click", () => {
-  showUnreadOnly = false;
-  btnFilterAll.classList.add("active");
-  btnFilterUnread.classList.remove("active");
-  renderList();
-});
-
-window.addEventListener("popstate", () => {
-  const q = getQueryDate();
-  if (!q) return;
-  const hit = daysCache.find(d => normalizeDateAny(d.date) === q);
-  if (hit) renderToday(hit);
-});
-
-// ---- init
-(async function init() {
-  if (!WORKER_ORIGIN) {
-    if (elPushStatus) elPushStatus.textContent = "設定エラー: WORKER_ORIGIN が空です";
-    return;
+  function registerServiceWorker() {
+    return Promise.race([
+      navigator.serviceWorker.register("./sw.js"),
+      new Promise((_, rej) => setTimeout(() => rej(new Error("ServiceWorker timeout")), 6000)),
+    ]);
   }
 
-  const reg = await registerSW();
-  await refreshPushUI(reg);
+  function urlBase64ToUint8Array(base64String) {
+    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
+    const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
+    const raw = atob(base64);
+    const output = new Uint8Array(raw.length);
+    for (let i = 0; i < raw.length; ++i) output[i] = raw.charCodeAt(i);
+    return output;
+  }
 
-  await loadDays().catch(() => { daysCache = []; });
-  updateCounts();
+  function init() {
+    bindEvents();
+    loadData();
+    registerServiceWorker().catch(() => {});
+  }
 
-  await loadTodayFromCacheOrApi().catch((e) => {
-    if (elTodayVerse) elTodayVerse.textContent = "読み込みに失敗しました";
-    if (elTodayComment) elTodayComment.textContent = String(e?.message || e);
-  });
+  document.addEventListener("DOMContentLoaded", init);
 })();
