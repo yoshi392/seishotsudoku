@@ -21,8 +21,8 @@
     countRead: qs("countRead"),
     countUnread: qs("countUnread"),
     list: qs("list"),
-    installHint: qs("installHint"), // index.html 側で <div id="installHint"></div> を置いておく
-    todayLikeCount: qs("todayLikeCount"), // いいね数表示場所（任意）
+    installHint: qs("installHint"),
+    todayLikeCount: qs("todayLikeCount"),
   };
 
   let installPrompt = null;
@@ -188,7 +188,6 @@
         left.append(verse);
       }
 
-      // リンクボタンをリストにも表示
       if (d.buttons && d.buttons.length) {
         const links = document.createElement("div");
         links.className = "link-buttons";
@@ -204,13 +203,6 @@
         left.append(links);
       }
 
-      // いいね数バッジ
-      const likeBadge = document.createElement("div");
-      likeBadge.className = "meta";
-      likeBadge.dataset.likeCount = d.ymd;
-      likeBadge.textContent = `♡ ${d.likeCount ?? 0}`;
-      left.append(likeBadge);
-
       const primaryLink =
         (d.buttons && d.buttons[0] && (d.buttons[0].prsUrl || d.buttons[0].lbUrl)) || "";
       if (primaryLink) {
@@ -221,49 +213,47 @@
         });
       }
 
-     // 既存の controls 作成部分を置き換え
-const controls = document.createElement("div");
-controls.className = "controls";
+      const controls = document.createElement("div");
+      controls.className = "controls";
 
-// 既読ボタン
-const btnRead = document.createElement("button");
-btnRead.textContent = isRead(d.ymd) ? "📖 既読" : "📖 未読";
-btnRead.className = "pill";
-btnRead.addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  const now = !isRead(d.ymd);
-  setRead(d.ymd, now);
-  renderList();
-  updateTodayButtons(todayYmd);
-});
+      const btnRead = document.createElement("button");
+      btnRead.textContent = isRead(d.ymd) ? "📖 既読" : "📖 未読";
+      btnRead.className = "pill";
+      btnRead.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const now = !isRead(d.ymd);
+        setRead(d.ymd, now);
+        renderList();
+        updateTodayButtons(todayYmd);
+      });
 
-// いいねボタン＋カウントの横並び
-const likeWrap = document.createElement("div");
-likeWrap.style.display = "flex";
-likeWrap.style.alignItems = "center";
-likeWrap.style.gap = "6px";
+      const likeWrap = document.createElement("div");
+      likeWrap.style.display = "flex";
+      likeWrap.style.alignItems = "center";
+      likeWrap.style.gap = "6px";
 
-const btnLike = document.createElement("button");
-btnLike.textContent = isLiked(d.ymd) ? "♥ いいね済" : "♡ いいね";
-btnLike.className = "pill secondary";
-btnLike.addEventListener("click", (ev) => {
-  ev.stopPropagation();
-  const now = !isLiked(d.ymd);
-  setLike(d.ymd, now);
-  toggleLike(d.ymd, now);  // サーバに増減送信
-  renderList();
-  if (d.ymd === todayYmd) updateTodayButtons(todayYmd);
-});
+      const btnLike = document.createElement("button");
+      btnLike.textContent = isLiked(d.ymd) ? "♥ いいね済" : "♡ いいね";
+      btnLike.className = "pill secondary";
+      btnLike.addEventListener("click", (ev) => {
+        ev.stopPropagation();
+        const now = !isLiked(d.ymd);
+        setLike(d.ymd, now);
+        toggleLike(d.ymd, now);
+        renderList();
+        if (d.ymd === todayYmd) updateTodayButtons(todayYmd);
+      });
 
-// カウント表示（ここがボタン横に出る）
-const likeBadge = document.createElement("span");
-likeBadge.className = "meta";
-likeBadge.dataset.likeCount = d.ymd;
-likeBadge.textContent = `♡ ${d.likeCount ?? 0}`;
+      const likeBadge = document.createElement("span");
+      likeBadge.className = "meta";
+      likeBadge.dataset.likeCount = d.ymd;
+      likeBadge.textContent = `♡ ${d.likeCount ?? 0}`;
 
-likeWrap.append(btnLike, likeBadge);
-controls.append(btnRead, likeWrap);
-li.append(left, controls);
+      likeWrap.append(btnLike, likeBadge);
+      controls.append(btnRead, likeWrap);
+      li.append(left, controls);
+      els.list.appendChild(li);
+    });
 
     const readCount = days.filter((d) => isRead(d.ymd)).length;
     const unreadCount = days.length - readCount;
@@ -276,7 +266,6 @@ li.append(left, controls);
     if (els.btnLike) els.btnLike.textContent = isLiked(ymd) ? "♥ いいね済" : "♡ いいね";
   }
 
-  // サーバにいいね増減を送る（/like を実装済み前提）
   async function toggleLike(date, nowOn) {
     setLike(date, nowOn);
     try {
@@ -287,18 +276,14 @@ li.append(left, controls);
         body: JSON.stringify({ date, delta }),
       });
       const json = await res.json();
-      if (json.likeCount !== undefined) {
-        updateLikeCount(date, json.likeCount);
-      }
+      if (json.likeCount !== undefined) updateLikeCount(date, json.likeCount);
     } catch (e) {
       // サーバ失敗時はローカルだけ保持
     }
   }
 
   function updateLikeCount(date, cnt) {
-    if (date === todayYmd && els.todayLikeCount) {
-      els.todayLikeCount.textContent = `♡ ${cnt}`;
-    }
+    if (date === todayYmd && els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${cnt}`;
     const badge = document.querySelector(`[data-like-count="${date}"]`);
     if (badge) badge.textContent = `♡ ${cnt}`;
   }
