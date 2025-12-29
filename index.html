@@ -3,99 +3,69 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <meta name="theme-color" content="#0b3d91" />
+  <meta name="theme-color" content="#edf2ff" />
   <title>聖書通読</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <style>
     :root {
-      --bg: #0b3d91;
-      --card: #f7f8fc;
-      --text: #0c1b33;
-      --muted: #5c6a82;
-      --accent: #ffb703;
-      --accent2: #fb5607;
+      --bg1: #eef4ff;
+      --bg2: #dff1ff;
+      --card: #ffffff;
+      --text: #1f2a44;
+      --muted: #6c7890;
+      --accent: #ffd166;
+      --accent2: #ff8b6b;
+      --primary: #6ea8fe;
+      --primary-dark: #4d7bd9;
+      --shadow: 0 8px 30px rgba(0,0,0,0.08);
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
-      font-family: "Segoe UI", "Helvetica Neue", Arial, sans-serif;
-      background: linear-gradient(135deg, #0b3d91 0%, #1a78c2 100%);
+      font-family: "Helvetica Neue", "Segoe UI", Arial, sans-serif;
+      background: radial-gradient(circle at 20% 20%, var(--bg2), var(--bg1) 45%, #f7fbff 80%);
       color: var(--text);
       min-height: 100vh;
       display: flex;
       justify-content: center;
     }
-    main {
-      width: min(960px, 100%);
-      padding: 16px;
-    }
-    .card {
-      background: var(--card);
-      border-radius: 16px;
-      padding: 16px;
-      box-shadow: 0 8px 28px rgba(0,0,0,0.12);
-      margin-bottom: 16px;
-    }
+    main { width: min(960px, 100%); padding: 16px; }
+    .card { background: var(--card); border-radius: 16px; padding: 16px; box-shadow: var(--shadow); margin-bottom: 16px; }
     h1 { margin: 0 0 12px; font-size: 22px; }
-    .top-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 12px; }
+    .top-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
     button {
-      border: none;
-      border-radius: 12px;
-      padding: 12px 14px;
-      font-size: 15px;
-      font-weight: 600;
-      color: #0c1b33;
-      background: white;
-      box-shadow: 0 4px 12px rgba(0,0,0,0.12);
-      cursor: pointer;
-      transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
+      border: none; border-radius: 12px; padding: 12px 14px; font-size: 15px; font-weight: 600;
+      color: #1f2a44; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      cursor: pointer; transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
     }
-    button:disabled { opacity: 0.6; cursor: default; box-shadow: none; }
+    button:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
     button:active { transform: translateY(1px); }
-    .pill { background: var(--accent); color: #0c1b33; }
-    .pill.secondary { background: var(--accent2); color: white; }
+    .pill { background: var(--accent); color: #4b3a00; }
+    .pill.secondary { background: var(--primary); color: white; }
     .status { font-size: 13px; color: var(--muted); margin-top: 4px; }
     .today-title { font-size: 18px; font-weight: 700; margin: 4px 0; }
     .verse { font-size: 16px; margin: 8px 0; line-height: 1.4; }
     .comment { font-size: 14px; color: var(--muted); line-height: 1.6; }
     .link-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
     .link-buttons a {
-      text-decoration: none;
-      background: #0b3d91;
-      color: white;
-      padding: 10px 12px;
-      border-radius: 10px;
-      font-size: 14px;
-      font-weight: 600;
+      text-decoration: none; background: var(--primary-dark); color: white; padding: 10px 12px;
+      border-radius: 10px; font-size: 14px; font-weight: 600;
     }
     .list-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
     .filters button { padding: 8px 12px; box-shadow: none; }
     .counts { font-size: 13px; color: var(--muted); }
     ul { list-style: none; padding: 0; margin: 12px 0 0; }
-    li.item {
-      background: white;
-      border-radius: 12px;
-      padding: 12px;
-      margin-bottom: 10px;
-      display: grid;
-      grid-template-columns: 1fr auto;
-      gap: 8px;
-      align-items: start;
-      box-shadow: 0 2px 10px rgba(0,0,0,0.08);
-    }
+    li.item { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 10px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
     .item .meta { font-size: 13px; color: var(--muted); }
     .item .title { font-size: 15px; font-weight: 700; }
     .controls { display: flex; gap: 6px; }
-    .badge { display: inline-block; padding: 2px 6px; font-size: 12px; border-radius: 6px; background: #e8ecf7; color: #0c1b33; }
-    .like { color: var(--accent2); }
     .ios-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
   </style>
   <script>
-    // 環境設定: 実際の値で置き換えてください
     window.__CONFIG__ = {
-      WORKER_ORIGIN: "https://seishotsudoku-push.teruntyo.workers.dev",
-      VAPID_PUBLIC_KEY: "BP51V69QOr3LWj2YhzcVO05ojPb9R_VRiMcNciBxPkOXbBtsYZMuJOxgrpVcr755ixYsWK5hVDJLXSgYpTWfM_I"
+      WORKER_ORIGIN: "https://seishotsudoku-push.your-worker.workers.dev",
+      VAPID_PUBLIC_KEY: "YOUR_VAPID_PUBLIC_KEY"
     };
   </script>
   <script defer src="./app.js"></script>
@@ -109,7 +79,7 @@
         <button id="btnInstall" class="pill secondary">⬇️ アプリをインストール</button>
       </div>
       <div class="status" id="pushStatus"></div>
-      <div class="ios-hint">iOSでは「ホーム画面に追加」した後に通知を許可してください。</div>
+      <div class="ios-hint">iOSでは「ホーム画面に追加」してから通知を許可してください。</div>
     </section>
 
     <section class="card" id="todayCard">
