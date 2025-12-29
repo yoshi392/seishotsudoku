@@ -27,43 +27,34 @@
   let todayYmd = "";
   let filter = "unread";
 
-  function setText(el, value) {
-    if (!el) return;
-    el.textContent = value ?? "";
-  }
+  const isStandalone = () =>
+    (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
+    window.navigator.standalone === true;
 
-  function storageKeyRead(ymd) {
-    return `read:${ymd}`;
-  }
-  function storageKeyLike(ymd) {
-    return `like:${ymd}`;
-  }
-  function isRead(ymd) {
-    return localStorage.getItem(storageKeyRead(ymd)) === "1";
-  }
-  function isLiked(ymd) {
-    return localStorage.getItem(storageKeyLike(ymd)) === "1";
-  }
-  function setRead(ymd, on) {
-    localStorage.setItem(storageKeyRead(ymd), on ? "1" : "0");
-  }
-  function setLike(ymd, on) {
-    localStorage.setItem(storageKeyLike(ymd), on ? "1" : "0");
-  }
+  function storageKeyRead(ymd) { return `read:${ymd}`; }
+  function storageKeyLike(ymd) { return `like:${ymd}`; }
+  function isRead(ymd) { return localStorage.getItem(storageKeyRead(ymd)) === "1"; }
+  function isLiked(ymd) { return localStorage.getItem(storageKeyLike(ymd)) === "1"; }
+  function setRead(ymd, on) { localStorage.setItem(storageKeyRead(ymd), on ? "1" : "0"); }
+  function setLike(ymd, on) { localStorage.setItem(storageKeyLike(ymd), on ? "1" : "0"); }
 
-  function todayYmdLocal() {
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, "0");
-    const da = String(d.getDate()).padStart(2, "0");
-    return `${y}-${m}-${da}`;
-  }
+  function setText(el, value) { if (el) el.textContent = value ?? ""; }
 
   async function fetchJson(path) {
     const url = `${API_BASE}${path}`;
-    const res = await fetch(url, { headers: { "Accept": "application/json" } });
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.json();
+  }
+
+  function normalizeDate(v) {
+    const m = String(v || "").trim().match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
+    if (!m) return "";
+    return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
+  }
+  function todayYmdLocal() {
+    const d = new Date();
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
   async function loadData() {
@@ -72,7 +63,6 @@
         fetchJson("/today"),
         fetchJson("/days?limit=365"),
       ]);
-
       const daysArr = Array.isArray(daysRes) ? daysRes : daysRes.days || [];
       days = sanitizeDays(daysArr);
       if (todayRes?.date) todayYmd = normalizeDate(todayRes.date) || todayYmdLocal();
@@ -88,7 +78,7 @@
     const today = todayYmdLocal();
     return (arr || [])
       .map((d) => {
-        const ymd = normalizeDate(d.ymd || d.date || d.dateRaw || d.dateText || "");
+        const ymd = normalizeDate(d.ymd || d.date);
         if (!ymd) return null;
         return {
           ymd,
@@ -113,14 +103,6 @@
       prsUrl: u,
       lbUrl: u,
     }));
-  }
-
-  function normalizeDate(v) {
-    const s = String(v || "").trim();
-    if (!s) return "";
-    const m = s.match(/^(\d{4})[\/\-.](\d{1,2})[\/\-.](\d{1,2})$/);
-    if (m) return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
-    return "";
   }
 
   function renderToday(t) {
@@ -205,31 +187,22 @@
   }
 
   function updateTodayButtons(ymd) {
-    if (els.btnTodayRead) {
-      els.btnTodayRead.textContent = isRead(ymd) ? "✔️ 既読済み" : "✔️ 既読にする";
-    }
-    if (els.btnLike) {
-      els.btnLike.textContent = isLiked(ymd) ? "♥ いいね済" : "♡ いいね";
-    }
+    if (els.btnTodayRead) els.btnTodayRead.textContent = isRead(ymd) ? "✔️ 既読済み" : "✔️ 既読にする";
+    if (els.btnLike) els.btnLike.textContent = isLiked(ymd) ? "♥ いいね済" : "♡ いいね";
   }
 
   function bindEvents() {
-    if (els.btnFilterUnread) els.btnFilterUnread.addEventListener("click", () => {
-      filter = "unread";
-      renderList();
-    });
-    if (els.btnFilterAll) els.btnFilterAll.addEventListener("click", () => {
-      filter = "all";
-      renderList();
-    });
-    if (els.btnLike) els.btnLike.addEventListener("click", () => {
+    els.btnFilterUnread?.addEventListener("click", () => { filter = "unread"; renderList(); });
+    els.btnFilterAll?.addEventListener("click", () => { filter = "all"; renderList(); });
+
+    els.btnLike?.addEventListener("click", () => {
       if (!todayYmd) return;
       const now = !isLiked(todayYmd);
       setLike(todayYmd, now);
       updateTodayButtons(todayYmd);
       renderList();
     });
-    if (els.btnTodayRead) els.btnTodayRead.addEventListener("click", () => {
+    els.btnTodayRead?.addEventListener("click", () => {
       if (!todayYmd) return;
       const now = !isRead(todayYmd);
       setRead(todayYmd, now);
@@ -240,18 +213,36 @@
     window.addEventListener("beforeinstallprompt", (e) => {
       e.preventDefault();
       installPrompt = e;
-      if (els.btnInstall) els.btnInstall.disabled = false;
+      updateInstallUi();
     });
 
-    if (els.btnInstall) els.btnInstall.addEventListener("click", async () => {
-      if (!installPrompt) return;
-      installPrompt.prompt();
-      await installPrompt.userChoice;
-      installPrompt = null;
+    els.btnInstall?.addEventListener("click", async () => {
+      if (isStandalone()) return;
+      if (installPrompt) {
+        installPrompt.prompt();
+        await installPrompt.userChoice;
+        installPrompt = null;
+        updateInstallUi();
+      } else {
+        setText(els.pushStatus, "iOSは共有→ホーム画面に追加でインストールできます");
+      }
+    });
+
+    els.btnPush?.addEventListener("click", enablePush);
+  }
+
+  function updateInstallUi() {
+    if (!els.btnInstall) return;
+    if (isStandalone()) {
       els.btnInstall.disabled = true;
-    });
-
-    if (els.btnPush) els.btnPush.addEventListener("click", enablePush);
+      els.btnInstall.textContent = "インストール済み";
+    } else if (installPrompt) {
+      els.btnInstall.disabled = false;
+      els.btnInstall.textContent = "⬇️ アプリをインストール";
+    } else {
+      els.btnInstall.disabled = false;
+      els.btnInstall.textContent = "⬇️ アプリをインストール";
+    }
   }
 
   async function enablePush() {
@@ -262,24 +253,45 @@
     try {
       setText(els.pushStatus, "通知を準備中…");
       const reg = await registerServiceWorker();
+      const permission = Notification.permission;
+      if (permission === "granted") {
+        const sub = await reg.pushManager.getSubscription() || await subscribe(reg);
+        await sendSub(sub);
+        setText(els.pushStatus, "通知を登録しました");
+        hidePushButton();
+        return;
+      }
       const perm = await Notification.requestPermission();
       if (perm !== "granted") {
         setText(els.pushStatus, "通知が許可されませんでした");
         return;
       }
-      const sub = await reg.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
-      });
-      await fetch(`${API_BASE}/subscribe`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(sub),
-      });
+      const sub = await subscribe(reg);
+      await sendSub(sub);
       setText(els.pushStatus, "通知を登録しました");
+      hidePushButton();
     } catch (e) {
       setText(els.pushStatus, `通知設定に失敗: ${e.message}`);
     }
+  }
+
+  async function subscribe(reg) {
+    return reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(VAPID_KEY),
+    });
+  }
+
+  async function sendSub(sub) {
+    await fetch(`${API_BASE}/subscribe`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sub),
+    });
+  }
+
+  function hidePushButton() {
+    if (els.btnPush) els.btnPush.style.display = "none";
   }
 
   function registerServiceWorker() {
@@ -300,7 +312,12 @@
 
   function init() {
     bindEvents();
+    updateInstallUi();
     loadData();
+    // hide push button if already granted
+    if (Notification?.permission === "granted") {
+      hidePushButton();
+    }
     registerServiceWorker().catch(() => {});
   }
 
