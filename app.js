@@ -152,7 +152,7 @@ function init() {
 
     const titleText = t.title || t.verse || "今日の聖句";
     const verseText = t.verse && t.verse !== titleText ? t.verse : "";
-
+    setText(qs("todayLikeCount"), `♡ ${t.likeCount ?? 0}`);
     setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
     setText(els.todayTitle, titleText);
     setText(els.todayVerse, verseText);
