@@ -1,120 +1,94 @@
-// app.js (front-end) — 完成版（A2HSポップアップ完全削除）
+// app.js (front-end) — index.html とID一致版
 
 const CONFIG = window.__CONFIG__ || {};
-const WORKER_ORIGIN = (CONFIG.WORKER_ORIGIN || "").replace(/\/$/, "");
-const VAPID_PUBLIC_KEY = (CONFIG.VAPID_PUBLIC_KEY || "").trim();
-const APP_URL = (CONFIG.APP_URL || (location.origin + location.pathname.replace(/\/[^/]*$/, "/")));
+const WORKER_ORIGIN = String(CONFIG.WORKER_ORIGIN || "").replace(/\/$/, "");
+const VAPID_PUBLIC_KEY = String(CONFIG.VAPID_PUBLIC_KEY || "").trim();
 
 // ---- DOM
-const elPushState = document.getElementById("pushState");
-const btnEnablePush = document.getElementById("btnEnablePush");
+const btnPush = document.getElementById("btnPush");
+const elPushStatus = document.getElementById("pushStatus");
 const btnInstall = document.getElementById("btnInstall");
 
+const btnLike = document.getElementById("btnLike");
 const elTodayDate = document.getElementById("todayDate");
 const elTodayVerse = document.getElementById("todayVerse");
 const elTodayButtons = document.getElementById("todayButtons");
 const elTodayComment = document.getElementById("todayComment");
-const btnLikeToday = document.getElementById("btnLikeToday");
 
 const btnFilterUnread = document.getElementById("btnFilterUnread");
 const btnFilterAll = document.getElementById("btnFilterAll");
-const elCounts = document.getElementById("counts");
-const elDaysList = document.getElementById("daysList");
+const elCountRead = document.getElementById("countRead");
+const elCountUnread = document.getElementById("countUnread");
+const elList = document.getElementById("list");
+
+// ---- state
+let daysCache = [];
+let showUnreadOnly = true;
+let selectedYmd = "";
+
+// Android install prompt
+let deferredInstallPrompt = null;
 
 // ---- helpers
-const JST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-function nowJst() { return new Date(Date.now() + JST_OFFSET_MS); }
-function todayYmd() {
-  const d = nowJst();
-  const y = d.getUTCFullYear();
-  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
-  const da = String(d.getUTCDate()).padStart(2, "0");
+function isIOS() {
+  const ua = navigator.userAgent || "";
+  return /iPad|iPhone|iPod/.test(ua) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
+}
+function isStandalone() {
+  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
+}
+function ymdLocal(d) {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const da = String(d.getDate()).padStart(2, "0");
   return `${y}-${m}-${da}`;
 }
-function ymdToSlash(ymd) {
-  if (!ymd) return "";
-  const [y,m,d] = ymd.split("-");
+function normalizeDateAny(s) {
+  const t = String(s || "").trim();
+  if (!t) return "";
+  if (/^\d{4}\/\d{1,2}\/\d{1,2}$/.test(t)) {
+    const [y, m, d] = t.split("/").map((x) => x.padStart(2, "0"));
+    return `${y}-${m}-${d}`;
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(t)) return t;
+  return "";
+}
+function formatDisplayDate(ymd) {
+  const [y, m, d] = ymd.split("-");
   return `${y}/${m}/${d}`;
 }
-function ymdCompare(a, b) { return String(a).localeCompare(String(b)); }
-
 function getQueryDate() {
   const u = new URL(location.href);
   const q = u.searchParams.get("date");
   return normalizeDateAny(q);
 }
-function normalizeDateAny(s) {
-  if (!s) return "";
-  const x = String(s).trim().replace(/\./g,"/").replace(/-/g,"/");
-  const parts = x.split("/").map(v=>v.trim()).filter(Boolean);
-  if (parts.length === 3) {
-    const y = Number(parts[0]), m = Number(parts[1]), d = Number(parts[2]);
-    if (!y || !m || !d) return "";
-    return `${y}-${String(m).padStart(2,"0")}-${String(d).padStart(2,"0")}`;
-  }
-  return "";
-}
-
-function isIOS() {
-  const ua = navigator.userAgent || "";
-  return /iPhone|iPad|iPod/i.test(ua);
-}
-function isStandalone() {
-  return window.matchMedia?.("(display-mode: standalone)")?.matches || window.navigator.standalone === true;
-}
-
-function setStatus(text) {
-  elPushState.textContent = text || "";
+function setQueryDate(ymd) {
+  const u = new URL(location.href);
+  u.searchParams.set("date", ymd);
+  history.pushState({}, "", u.toString());
 }
 
 // localStorage keys
 function kRead(ymd) { return `read:${ymd}`; }
 function kLike(ymd) { return `like:${ymd}`; }
 function isRead(ymd) { return localStorage.getItem(kRead(ymd)) === "1"; }
-function toggleRead(ymd) {
-  const v = isRead(ymd) ? "0" : "1";
-  localStorage.setItem(kRead(ymd), v);
-  return v === "1";
-}
+function setRead(ymd, v) { localStorage.setItem(kRead(ymd), v ? "1" : "0"); }
 function isLiked(ymd) { return localStorage.getItem(kLike(ymd)) === "1"; }
-function toggleLike(ymd) {
-  const v = isLiked(ymd) ? "0" : "1";
-  localStorage.setItem(kLike(ymd), v);
-  return v === "1";
-}
+function setLiked(ymd, v) { localStorage.setItem(kLike(ymd), v ? "1" : "0"); }
 
-function safeJsonParse(s) { try { return JSON.parse(s); } catch { return null; } }
-
-// bible.com → prs.app (新改訳2017)
-function bibleComToPrs(lbUrl) {
-  const m = String(lbUrl || "").trim()
-    .match(/\/bible\/\d+\/([0-9A-Z]+)\.([0-9]+)(?:\.([0-9]+))?\.[A-Z]+/i);
-  if (!m) return "";
-  const book = m[1].toLowerCase();
-  const chapter = m[2];
-  const verse = m[3];
-  return verse
-    ? `https://prs.app/ja/bible/${book}.${chapter}.${verse}.jdb`
-    : `https://prs.app/ja/bible/${book}.${chapter}.jdb`;
-}
-
-function normalizeToAbsoluteUrl(maybeUrl) {
-  const base = APP_URL || location.origin + "/";
-  if (!maybeUrl) return base;
-  try { return new URL(String(maybeUrl).trim(), base).href; } catch { return base; }
-}
-
-// ---- SW / Push
-async function ensureSW() {
+// ---- SW register + timeout
+async function registerSW() {
   if (!("serviceWorker" in navigator)) return null;
-  try {
-    await navigator.serviceWorker.register("./sw.js");
-    return await navigator.serviceWorker.ready;
-  } catch {
-    return null;
-  }
+
+  // scopeを /seishotsudoku/ に合わせるため相対で登録
+  await navigator.serviceWorker.register("./sw.js");
+
+  // ready が永久待ちにならないようタイムアウト
+  const ready = navigator.serviceWorker.ready;
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error("SW ready timeout")), 8000));
+  return await Promise.race([ready, timeout]).catch(() => null);
 }
+
 function urlBase64ToUint8Array(base64String) {
   const padding = "=".repeat((4 - base64String.length % 4) % 4);
   const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
@@ -124,366 +98,336 @@ function urlBase64ToUint8Array(base64String) {
   return outputArray;
 }
 
-async function refreshPushUI() {
-  // iOS: Safariでは「ホーム画面に追加」したPWAでないとPushできない
-  if (isIOS() && !isStandalone()) {
-    btnEnablePush.style.display = "none";
-    setStatus("Push通知を有効にするには、ホーム画面に追加してください。");
+// ---- Push UI
+async function refreshPushUI(reg) {
+  if (!btnPush || !elPushStatus) return;
+
+  // iOS Safari は「ホーム画面に追加」しないと PushManager が出ない
+  if (!("PushManager" in window)) {
+    if (isIOS() && !isStandalone()) {
+      elPushStatus.textContent = "Push通知を有効にするには、ホーム画面に追加してください。";
+    } else {
+      elPushStatus.textContent = "この端末/ブラウザでは通知を使えません。";
+    }
+    btnPush.disabled = true;
     return;
   }
 
-  // Push非対応
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    btnEnablePush.style.display = "none";
-    setStatus("この端末ではPush通知に対応していません。");
-    return;
-  }
-
-  // 権限状態
-  const perm = Notification.permission;
-  const reg = await ensureSW();
-
-  if (!reg) {
-    // SW登録失敗
-    btnEnablePush.style.display = "none";
-    setStatus("通知機能の初期化に失敗しました（Service Worker）。");
-    return;
-  }
-
-  // 既に購読済みか
-  let sub = null;
-  try { sub = await reg.pushManager.getSubscription(); } catch { sub = null; }
-
-  if (perm === "granted" && sub) {
-    btnEnablePush.style.display = "none";
-    setStatus("✅ 通知は有効です");
+  const sub = await reg?.pushManager?.getSubscription?.().catch(() => null);
+  if (sub) {
+    elPushStatus.textContent = "✅ 通知は有効です";
+    btnPush.hidden = true;
   } else {
-    btnEnablePush.style.display = "inline-block";
-    setStatus("");
+    elPushStatus.textContent = "";
+    btnPush.hidden = false;
+    btnPush.disabled = false;
   }
 }
 
 async function enablePush() {
-  // iOSでPWAでない場合は「案内」だけ（ポップアップは出さない）
-  if (isIOS() && !isStandalone()) {
-    setStatus("Push通知を有効にするには、ホーム画面に追加してください。");
-    return;
-  }
-
-  if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
-    setStatus("この端末ではPush通知に対応していません。");
-    return;
-  }
-  if (!VAPID_PUBLIC_KEY) {
-    setStatus("VAPID公開鍵が未設定です（index.html の __CONFIG__ を確認してください）。");
-    return;
-  }
   if (!WORKER_ORIGIN) {
-    setStatus("WORKER_ORIGIN が未設定です（index.html の __CONFIG__ を確認してください）。");
+    alert("WORKER_ORIGIN が空です（index.html の __CONFIG__ を確認してください）");
+    return;
+  }
+  if (!VAPID_PUBLIC_KEY || VAPID_PUBLIC_KEY.length < 20) {
+    alert("VAPID 公開鍵が未設定です（index.html の __CONFIG__ を確認してください）");
     return;
   }
 
-  setStatus("準備中…");
+  btnPush.disabled = true;
+  elPushStatus.textContent = "準備中…";
 
-  const reg = await ensureSW();
-  if (!reg) {
-    setStatus("通知機能の初期化に失敗しました（Service Worker）。");
-    return;
-  }
+  try {
+    const reg = await registerSW();
+    if (!reg) throw new Error("Service Worker の登録に失敗しました");
 
-  const perm = await Notification.requestPermission();
-  if (perm !== "granted") {
-    setStatus("通知が許可されませんでした。設定で通知を許可してください。");
-    return;
-  }
+    if (!("PushManager" in window)) {
+      throw new Error(isIOS() ? "ホーム画面に追加してから開いてください" : "この端末/ブラウザでは通知を使えません");
+    }
 
-  let sub = await reg.pushManager.getSubscription();
-  if (!sub) {
-    sub = await reg.pushManager.subscribe({
+    const perm = await Notification.requestPermission();
+    if (perm !== "granted") throw new Error("通知が許可されていません（端末の設定で許可してください）");
+
+    const sub = await reg.pushManager.subscribe({
       userVisibleOnly: true,
       applicationServerKey: urlBase64ToUint8Array(VAPID_PUBLIC_KEY),
     });
+
+    const res = await fetch(WORKER_ORIGIN + "/subscribe", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(sub),
+    });
+
+    if (!res.ok) {
+      const t = await res.text().catch(() => "");
+      throw new Error(`subscribe 失敗: ${res.status} ${t}`);
+    }
+
+    await refreshPushUI(reg);
+  } catch (e) {
+    alert(String(e?.message || e));
+    elPushStatus.textContent = "";
+    btnPush.disabled = false;
+  }
+}
+
+// ---- fetch helpers
+async function fetchJson(path) {
+  const r = await fetch(WORKER_ORIGIN + path, { cache: "no-store" });
+  const j = await r.json().catch(() => null);
+  if (!r.ok) {
+    const msg = (j && j.error) ? j.error : `HTTP ${r.status}`;
+    throw new Error(msg);
+  }
+  return j;
+}
+
+// ---- render today (from a day object)
+function renderToday(day) {
+  const ymd = normalizeDateAny(day?.date) || ymdLocal(new Date());
+  selectedYmd = ymd;
+
+  if (elTodayDate) {
+    const w = day?.weekday ? `（${day.weekday}）` : "";
+    elTodayDate.textContent = `${formatDisplayDate(ymd)} ${w}`.trim();
+  }
+  if (elTodayVerse) elTodayVerse.textContent = day?.verse || day?.title || "今日の聖書箇所";
+  if (elTodayComment) elTodayComment.textContent = day?.comment || "";
+
+  if (elTodayButtons) {
+    elTodayButtons.innerHTML = "";
+    const btns = Array.isArray(day?.buttons) ? day.buttons : [];
+    for (const b of btns) {
+      const row = document.createElement("div");
+      row.className = "btnRow";
+
+      const a1 = document.createElement("a");
+      a1.className = "btn";
+      a1.href = b.prsUrl || "#";
+      a1.target = "_blank";
+      a1.rel = "noopener";
+      a1.textContent = `${b.label}（新改訳2017）`;
+
+      const a2 = document.createElement("a");
+      a2.className = "btn btnLb";
+      a2.href = b.lbUrl || "#";
+      a2.target = "_blank";
+      a2.rel = "noopener";
+      a2.textContent = `${b.label}（LB）`;
+
+      row.appendChild(a1);
+      row.appendChild(a2);
+      elTodayButtons.appendChild(row);
+    }
   }
 
-  const res = await fetch(WORKER_ORIGIN + "/subscribe", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(sub),
-  });
+  // like（今日のハート）
+  if (btnLike) {
+    const liked = isLiked(ymd);
+    btnLike.textContent = liked ? "♥" : "♡";
+    btnLike.setAttribute("aria-pressed", liked ? "true" : "false");
+    btnLike.onclick = () => {
+      const now = !isLiked(ymd);
+      setLiked(ymd, now);
+      setRead(ymd, true);
+      btnLike.textContent = now ? "♥" : "♡";
+      btnLike.setAttribute("aria-pressed", now ? "true" : "false");
+      renderList();
+      updateCounts();
+    };
+  }
 
-  const t = await res.text().catch(() => "");
-  if (!res.ok) {
-    setStatus(`subscribe失敗: ${res.status} ${t}`);
+  // 開いたら既読扱い（必要なら外してOK）
+  setRead(ymd, true);
+  renderList();
+  updateCounts();
+}
+
+// ---- list
+function updateCounts() {
+  const items = daysCache;
+  let read = 0, unread = 0;
+  for (const it of items) {
+    const ymd = normalizeDateAny(it.date);
+    if (!ymd) continue;
+    if (isRead(ymd)) read++; else unread++;
+  }
+  if (elCountRead) elCountRead.textContent = String(read);
+  if (elCountUnread) elCountUnread.textContent = String(unread);
+}
+
+function renderList() {
+  if (!elList) return;
+  elList.innerHTML = "";
+
+  const today = ymdLocal(new Date());
+
+  const items = daysCache
+    .map(d => ({...d, _ymd: normalizeDateAny(d.date)}))
+    .filter(d => d._ymd)
+    // ★未来は出さない（今日まで）
+    .filter(d => d._ymd <= today)
+    // ★降順（新しい日付が上）
+    .sort((a,b) => (a._ymd < b._ymd ? 1 : -1));
+
+  const filtered = showUnreadOnly
+    ? items.filter(d => !isRead(d._ymd))
+    : items;
+
+  for (const d of filtered) {
+    const ymd = d._ymd;
+    const li = document.createElement("li");
+
+    const row = document.createElement("div");
+    row.className = "row";
+
+    const left = document.createElement("div");
+    left.className = "left";
+
+    const check = document.createElement("div");
+    check.className = "check" + (isRead(ymd) ? " on" : "");
+    check.title = "既読";
+    check.onclick = (ev) => {
+      ev.stopPropagation();
+      const now = !isRead(ymd);
+      setRead(ymd, now);
+      check.className = "check" + (now ? " on" : "");
+      updateCounts();
+      if (showUnreadOnly) renderList();
+    };
+
+    const mainBtn = document.createElement("button");
+    mainBtn.className = "rowMain";
+    mainBtn.type = "button";
+    mainBtn.onclick = () => {
+      setQueryDate(ymd);
+      setRead(ymd, true);
+      renderToday(d);
+    };
+
+    const dateDiv = document.createElement("div");
+    dateDiv.className = "rowDate";
+    const w = d.weekday ? `（${d.weekday}）` : "";
+    dateDiv.textContent = `${formatDisplayDate(ymd)} ${w}`.trim();
+
+    const verseDiv = document.createElement("div");
+    verseDiv.className = "rowVerse";
+    verseDiv.textContent = d.verse || d.title || "";
+
+    mainBtn.appendChild(dateDiv);
+    mainBtn.appendChild(verseDiv);
+
+    left.appendChild(check);
+    left.appendChild(mainBtn);
+
+    const heart = document.createElement("button");
+    heart.className = "heart";
+    heart.type = "button";
+    heart.textContent = isLiked(ymd) ? "♥" : "♡";
+    heart.onclick = (ev) => {
+      ev.stopPropagation();
+      const now = !isLiked(ymd);
+      setLiked(ymd, now);
+      setRead(ymd, true);
+      heart.textContent = now ? "♥" : "♡";
+      updateCounts();
+      if (showUnreadOnly) renderList();
+      // 今日表示中のハートも同期
+      if (selectedYmd === ymd && btnLike) {
+        btnLike.textContent = now ? "♥" : "♡";
+        btnLike.setAttribute("aria-pressed", now ? "true" : "false");
+      }
+    };
+
+    row.appendChild(left);
+    row.appendChild(heart);
+    li.appendChild(row);
+    elList.appendChild(li);
+  }
+}
+
+// ---- load data
+async function loadDays() {
+  // サーバ仕様が変わっても耐える（配列 / {days:[]} どっちでも）
+  const j = await fetchJson("/days?limit=365");
+  const arr = Array.isArray(j) ? j : (j.days || j.list || []);
+  daysCache = Array.isArray(arr) ? arr : [];
+}
+
+async function loadTodayFromCacheOrApi() {
+  const q = getQueryDate();
+  const todayYmd = ymdLocal(new Date());
+  const target = q || todayYmd;
+
+  // daysCacheから探す
+  const hit = daysCache.find(d => normalizeDateAny(d.date) === target);
+  if (hit) {
+    renderToday(hit);
     return;
   }
 
-  await refreshPushUI();
+  // だめなら /today を読む（あなたのWorkerが返す形式に合わせる）
+  const t = await fetchJson("/today");
+  // /today が単体オブジェクトならそれを使う
+  renderToday(t);
 }
 
-// ---- Install prompt (Android Chrome)
-let deferredPrompt = null;
+// ---- install prompt (Android)
 window.addEventListener("beforeinstallprompt", (e) => {
   e.preventDefault();
-  deferredPrompt = e;
-  if (btnInstall) btnInstall.style.display = "inline-block";
+  deferredInstallPrompt = e;
+  if (btnInstall) btnInstall.hidden = false;
 });
-window.addEventListener("appinstalled", () => {
-  deferredPrompt = null;
-  if (btnInstall) btnInstall.style.display = "none";
+if (btnInstall) {
+  btnInstall.addEventListener("click", async () => {
+    if (!deferredInstallPrompt) return;
+    deferredInstallPrompt.prompt();
+    await deferredInstallPrompt.userChoice.catch(() => null);
+    deferredInstallPrompt = null;
+    btnInstall.hidden = true;
+  });
+}
+
+// ---- events
+if (btnPush) btnPush.addEventListener("click", enablePush);
+
+if (btnFilterUnread) btnFilterUnread.addEventListener("click", () => {
+  showUnreadOnly = true;
+  btnFilterUnread.classList.add("active");
+  btnFilterAll.classList.remove("active");
+  renderList();
 });
 
-async function handleInstallClick() {
-  if (!deferredPrompt) return;
-  deferredPrompt.prompt();
-  try { await deferredPrompt.userChoice; } catch {}
-  deferredPrompt = null;
-  if (btnInstall) btnInstall.style.display = "none";
-}
+if (btnFilterAll) btnFilterAll.addEventListener("click", () => {
+  showUnreadOnly = false;
+  btnFilterAll.classList.add("active");
+  btnFilterUnread.classList.remove("active");
+  renderList();
+});
 
-// ---- Worker API
-async function fetchJson(url) {
-  const r = await fetch(url, { cache: "no-store" });
-  const t = await r.text();
-  const j = safeJsonParse(t);
-  return { ok: r.ok, status: r.status, json: j, text: t };
-}
-
-async function loadToday() {
-  const { ok, status, json, text } = await fetchJson(WORKER_ORIGIN + "/today");
-  if (!ok || !json?.ok) {
-    return { ok:false, error: json?.error || `today fetch failed: ${status} ${text}` };
-  }
-  // pageUrl から ymd 抜き出し（無ければJST今日）
-  const ymd = normalizeDateAny(new URL(json.pageUrl || (APP_URL + "?date=" + todayYmd()), APP_URL).searchParams.get("date")) || todayYmd();
-  return {
-    ok:true,
-    ymd,
-    date: json.date || ymdToSlash(ymd),
-    weekday: json.weekday || "",
-    verse: json.verse || "",
-    comment: json.comment || "",
-    buttons: Array.isArray(json.buttons) ? json.buttons : [],
-    pageUrl: normalizeToAbsoluteUrl(json.pageUrl || (`?date=${encodeURIComponent(ymd)}`)),
-  };
-}
-
-// days: 365日分（未来は表示しない）
-async function loadDaysList(limit = 365) {
-  const today = todayYmd();
-  // 「昨日まで」
-  const d = nowJst();
-  d.setUTCDate(d.getUTCDate() - 1);
-  const until = `${d.getUTCFullYear()}-${String(d.getUTCMonth()+1).padStart(2,"0")}-${String(d.getUTCDate()).padStart(2,"0")}`;
-
-  // できるだけ互換：/days?limit=365&until=YYYY-MM-DD
-  const u = new URL(WORKER_ORIGIN + "/days");
-  u.searchParams.set("limit", String(limit));
-  u.searchParams.set("until", until);
-
-  const { ok, status, json, text } = await fetchJson(u.toString());
-  if (!ok || !json?.ok) {
-    return { ok:false, error: json?.error || `days fetch failed: ${status} ${text}`, days: [] };
-  }
-
-  const days = Array.isArray(json.days) ? json.days : [];
-  // 未来を除外（念のため）
-  const filtered = days
-    .map(d => {
-      const ymd = d.ymd || normalizeDateAny(d.pageUrl ? new URL(d.pageUrl, APP_URL).searchParams.get("date") : "");
-      return { ...d, ymd };
-    })
-    .filter(d => d.ymd && ymdCompare(d.ymd, today) <= 0) // 今日含む可能性があってもOK
-    .filter(d => ymdCompare(d.ymd, until) <= 0); // 昨日まで
-
-  // 新しい日付が上に来る想定。並びが逆でも保険でソート。
-  filtered.sort((a,b)=> ymdCompare(b.ymd, a.ymd));
-  return { ok:true, until, days: filtered };
-}
-
-// ---- Render
-function renderToday(data) {
-  const ymd = data.ymd;
-  elTodayDate.textContent = `${data.date}${data.weekday ? `（${data.weekday}）` : ""}`;
-  elTodayVerse.textContent = data.verse || "";
-  elTodayComment.textContent = data.comment || "";
-
-  // buttons
-  elTodayButtons.innerHTML = "";
-  for (const b of (data.buttons || [])) {
-    const prs = b.prsUrl || bibleComToPrs(b.lbUrl);
-    const lb = b.lbUrl || "";
-    const label = b.label || data.verse || "聖書";
-
-    if (prs) {
-      const a = document.createElement("a");
-      a.className = "pill prs";
-      a.textContent = `${label}（新改訳2017）`;
-      a.href = prs;
-      a.target = "_blank";
-      a.rel = "noopener";
-      elTodayButtons.appendChild(a);
-    }
-    if (lb) {
-      const a = document.createElement("a");
-      a.className = "pill lb";
-      a.textContent = `${label}（LB）`;
-      a.href = lb;
-      a.target = "_blank";
-      a.rel = "noopener";
-      elTodayButtons.appendChild(a);
-    }
-  }
-
-  // like
-  const liked = isLiked(ymd);
-  btnLikeToday.classList.toggle("on", liked);
-  btnLikeToday.textContent = liked ? "♥" : "♡";
-  btnLikeToday.onclick = () => {
-    const on = toggleLike(ymd);
-    btnLikeToday.classList.toggle("on", on);
-    btnLikeToday.textContent = on ? "♥" : "♡";
-    // 一覧も更新
-    renderDaysList(currentDays, currentFilterUnreadOnly);
-  };
-}
-
-function renderCounts(days) {
-  let read = 0, unread = 0;
-  for (const d of days) {
-    if (!d.ymd) continue;
-    if (isRead(d.ymd)) read++; else unread++;
-  }
-  elCounts.textContent = `既読 ${read} / 未読 ${unread}`;
-}
-
-function makeItem(day) {
-  const ymd = day.ymd;
-  const item = document.createElement("div");
-  item.className = "item";
-
-  const mark = document.createElement("button");
-  mark.className = "mark" + (isRead(ymd) ? " on" : "");
-  mark.title = "既読/未読";
-  mark.onclick = () => {
-    const on = toggleRead(ymd);
-    mark.classList.toggle("on", on);
-    renderCounts(currentDays);
-    if (currentFilterUnreadOnly) {
-      renderDaysList(currentDays, true);
-    }
-  };
-
-  const link = document.createElement("a");
-  link.className = "link";
-  link.href = `${APP_URL}?date=${encodeURIComponent(ymd)}`;
-  link.textContent = `${day.date || ymdToSlash(ymd)} ${day.weekday ? `(${day.weekday})` : ""} ${day.verse || ""}`;
-  const sub = document.createElement("span");
-  sub.className = "sub";
-  sub.textContent = "タップして表示";
-  link.appendChild(sub);
-
-  const like = document.createElement("button");
-  const liked = isLiked(ymd);
-  like.className = "likeMini" + (liked ? " on" : "");
-  like.textContent = liked ? "♥" : "♡";
-  like.onclick = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    const on = toggleLike(ymd);
-    like.classList.toggle("on", on);
-    like.textContent = on ? "♥" : "♡";
-  };
-
-  item.appendChild(mark);
-  item.appendChild(link);
-  item.appendChild(like);
-  return item;
-}
-
-function renderDaysList(days, unreadOnly) {
-  elDaysList.innerHTML = "";
-  const selected = days.filter(d => d.ymd);
-
-  const show = unreadOnly ? selected.filter(d => !isRead(d.ymd)) : selected;
-  for (const d of show) elDaysList.appendChild(makeItem(d));
-
-  renderCounts(selected);
-}
-
-// ---- main
-let currentDays = [];
-let currentFilterUnreadOnly = true;
-
-async function main() {
-  // Push UI
-  btnEnablePush?.addEventListener("click", enablePush);
-  await refreshPushUI();
-
-  // Install UI
-  btnInstall?.addEventListener("click", handleInstallClick);
-
-  // Load data
-  if (!WORKER_ORIGIN) {
-    elTodayVerse.textContent = "WORKER_ORIGIN が未設定です";
-    elTodayComment.textContent = "index.html の window.__CONFIG__ を確認してください。";
-    return;
-  }
-
-  const t = await loadToday();
-  if (!t.ok) {
-    elTodayVerse.textContent = "読み込みに失敗しました";
-    elTodayComment.textContent = t.error || "";
-    return;
-  }
-
-  // 表示したい日（クエリがあればその日、なければ今日）
+window.addEventListener("popstate", () => {
   const q = getQueryDate();
-  const selectedYmd = q || t.ymd;
-
-  // まず今日を表示（後で過去日に切り替え）
-  renderToday(t);
-
-  // days list
-  const daysRes = await loadDaysList(365);
-  if (daysRes.ok) {
-    currentDays = daysRes.days || [];
-    currentFilterUnreadOnly = true;
-    renderDaysList(currentDays, true);
-  }
-
-  // クエリ日が今日以外なら、一覧から探して差し替える（未来は表示しない仕様）
-  if (selectedYmd && selectedYmd !== t.ymd && currentDays.length) {
-    const hit = currentDays.find(d => d.ymd === selectedYmd);
-    if (hit) {
-      // hit には buttons が無い可能性があるため、最低限で表示
-      renderToday({
-        ymd: hit.ymd,
-        date: hit.date || ymdToSlash(hit.ymd),
-        weekday: hit.weekday || "",
-        verse: hit.verse || "",
-        comment: hit.comment || "",
-        buttons: hit.buttons || [],
-        pageUrl: hit.pageUrl || `${APP_URL}?date=${encodeURIComponent(hit.ymd)}`
-      });
-    }
-  }
-
-  // Filters
-  btnFilterUnread?.addEventListener("click", () => {
-    currentFilterUnreadOnly = true;
-    btnFilterUnread.classList.add("on");
-    btnFilterAll.classList.remove("on");
-    renderDaysList(currentDays, true);
-  });
-  btnFilterAll?.addEventListener("click", () => {
-    currentFilterUnreadOnly = false;
-    btnFilterAll.classList.add("on");
-    btnFilterUnread.classList.remove("on");
-    renderDaysList(currentDays, false);
-  });
-}
-
-main().catch((e) => {
-  elTodayVerse.textContent = "エラーが発生しました";
-  elTodayComment.textContent = String(e?.stack || e);
+  if (!q) return;
+  const hit = daysCache.find(d => normalizeDateAny(d.date) === q);
+  if (hit) renderToday(hit);
 });
+
+// ---- init
+(async function init() {
+  if (!WORKER_ORIGIN) {
+    if (elPushStatus) elPushStatus.textContent = "設定エラー: WORKER_ORIGIN が空です";
+    return;
+  }
+
+  const reg = await registerSW();
+  await refreshPushUI(reg);
+
+  await loadDays().catch(() => { daysCache = []; });
+  updateCounts();
+
+  await loadTodayFromCacheOrApi().catch((e) => {
+    if (elTodayVerse) elTodayVerse.textContent = "読み込みに失敗しました";
+    if (elTodayComment) elTodayComment.textContent = String(e?.message || e);
+  });
+})();
