@@ -3,63 +3,67 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width,initial-scale=1,maximum-scale=1" />
-  <meta name="theme-color" content="#edf2ff" />
+  <meta name="theme-color" content="#eaf2ff" />
   <title>聖書通読</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="icon" href="./icons/icon-192.png" />
   <style>
     :root {
-      --bg1: #eef4ff;
-      --bg2: #dff1ff;
+      --bg1: #f2f6ff;
+      --bg2: #e7f1ff;
       --card: #ffffff;
-      --text: #1f2a44;
-      --muted: #6c7890;
-      --accent: #ffd166;
-      --accent2: #ff8b6b;
-      --primary: #6ea8fe;
-      --primary-dark: #4d7bd9;
-      --shadow: 0 8px 30px rgba(0,0,0,0.08);
+      --text: #1e2533;
+      --muted: #6c7383;
+      --primary: #5b8af7;
+      --primary-soft: #dce7ff;
+      --accent: #f7c95b;
+      --accent-soft: #fbeccd;
+      --shadow: 0 10px 35px rgba(0,0,0,0.08);
+      --radius: 18px;
     }
     * { box-sizing: border-box; }
     body {
       margin: 0;
       font-family: "Helvetica Neue", "Segoe UI", Arial, sans-serif;
-      background: radial-gradient(circle at 20% 20%, var(--bg2), var(--bg1) 45%, #f7fbff 80%);
+      background: radial-gradient(circle at 25% 20%, var(--bg2), var(--bg1) 50%, #f9fbff 80%);
       color: var(--text);
       min-height: 100vh;
       display: flex;
       justify-content: center;
     }
-    main { width: min(960px, 100%); padding: 16px; }
-    .card { background: var(--card); border-radius: 16px; padding: 16px; box-shadow: var(--shadow); margin-bottom: 16px; }
-    h1 { margin: 0 0 12px; font-size: 22px; }
-    .top-actions { display: flex; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+    main { width: min(960px, 100%); padding: 18px; }
+    .card { background: var(--card); border-radius: var(--radius); padding: 18px; box-shadow: var(--shadow); margin-bottom: 16px; }
+    h1 { margin: 0 0 12px; font-size: 24px; }
+    .top-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 8px; }
     button {
-      border: none; border-radius: 12px; padding: 12px 14px; font-size: 15px; font-weight: 600;
-      color: #1f2a44; background: #fff; box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+      border: none; border-radius: 14px; padding: 12px 15px; font-size: 15px; font-weight: 650;
+      color: #1e2533; background: #fff; box-shadow: 0 5px 14px rgba(0,0,0,0.08);
       cursor: pointer; transition: transform 120ms ease, box-shadow 120ms ease, opacity 120ms ease;
     }
-    button:disabled { opacity: 0.55; cursor: default; box-shadow: none; }
+    button:disabled { opacity: 0.5; cursor: default; box-shadow: none; }
     button:active { transform: translateY(1px); }
-    .pill { background: var(--accent); color: #4b3a00; }
-    .pill.secondary { background: var(--primary); color: white; }
+    .pill { background: var(--accent-soft); color: #4b3600; }
+    .pill.secondary { background: var(--primary-soft); color: var(--primary); }
     .status { font-size: 13px; color: var(--muted); margin-top: 4px; }
-    .today-title { font-size: 18px; font-weight: 700; margin: 4px 0; }
-    .verse { font-size: 16px; margin: 8px 0; line-height: 1.4; }
+    .today-title { font-size: 20px; font-weight: 750; margin: 4px 0; }
+    .verse { font-size: 16px; margin: 8px 0; line-height: 1.5; }
     .comment { font-size: 14px; color: var(--muted); line-height: 1.6; }
     .link-buttons { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 8px; }
     .link-buttons a {
-      text-decoration: none; background: var(--primary-dark); color: white; padding: 10px 12px;
-      border-radius: 10px; font-size: 14px; font-weight: 600;
+      text-decoration: none; background: var(--primary-soft); color: var(--primary);
+      padding: 10px 12px; border-radius: 12px; font-size: 14px; font-weight: 700;
+      border: 1px solid #d0dcff;
     }
-    .list-header { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .link-buttons a.lb { background: var(--accent-soft); color: #6b4b00; border-color: #f2dfac; }
+    .list-header { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
     .filters button { padding: 8px 12px; box-shadow: none; }
+    .filters .active { background: var(--accent); color: #4b3600; }
     .counts { font-size: 13px; color: var(--muted); }
     ul { list-style: none; padding: 0; margin: 12px 0 0; }
-    li.item { background: #fff; border-radius: 12px; padding: 12px; margin-bottom: 10px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; box-shadow: 0 2px 10px rgba(0,0,0,0.06); }
+    li.item { background: #fff; border-radius: 14px; padding: 12px; margin-bottom: 12px; display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: start; box-shadow: 0 2px 12px rgba(0,0,0,0.06); }
     .item .meta { font-size: 13px; color: var(--muted); }
     .item .title { font-size: 15px; font-weight: 700; }
-    .controls { display: flex; gap: 6px; }
+    .controls { display: flex; gap: 8px; flex-wrap: wrap; }
     .ios-hint { font-size: 12px; color: var(--muted); margin-top: 4px; }
   </style>
   <script>
@@ -77,8 +81,8 @@
       <div class="top-actions">
         <button id="btnPush" class="pill">🔔 通知を有効にする</button>
         <button id="btnInstall" class="pill secondary">⬇️ アプリをインストール</button>
+        <div class="status" id="pushStatus"></div>
       </div>
-      <div class="status" id="pushStatus"></div>
       <div class="ios-hint">iOSでは「ホーム画面に追加」してから通知を許可してください。</div>
     </section>
 
@@ -88,7 +92,7 @@
       <div class="verse" id="todayVerse"></div>
       <div class="comment" id="todayComment"></div>
       <div class="link-buttons" id="todayButtons"></div>
-      <div style="margin-top:10px; display:flex; gap:8px; flex-wrap:wrap;">
+      <div style="margin-top:12px; display:flex; gap:10px; flex-wrap:wrap;">
         <button id="btnTodayRead" class="pill">✔️ 既読にする</button>
         <button id="btnLike" class="pill secondary">♡ いいね</button>
       </div>
@@ -97,8 +101,8 @@
     <section class="card">
       <div class="list-header">
         <div class="filters">
-          <button id="btnFilterUnread" class="pill">未読のみ</button>
-          <button id="btnFilterAll">すべて</button>
+          <button id="btnFilterUnread" class="pill active">未読のみ</button>
+          <button id="btnFilterAll" class="pill secondary">すべて</button>
         </div>
         <div class="counts">既読 <span id="countRead">0</span> / 未読 <span id="countUnread">0</span></div>
       </div>
