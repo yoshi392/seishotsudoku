@@ -339,19 +339,21 @@
     els.btnPush?.addEventListener("click", enablePush);
   }
 
-  function updateInstallUi() {
-    if (!els.btnInstall) return;
-    if (isStandalone()) {
-      els.btnInstall.disabled = true;
-      els.btnInstall.textContent = "インストール済み";
-    } else if (installPrompt) {
-      els.btnInstall.disabled = false;
-      els.btnInstall.textContent = "⬇️ アプリをインストール";
-    } else {
-      els.btnInstall.disabled = false;
-      els.btnInstall.textContent = "⬇️ アプリをインストール";
-    }
+// インストールボタンの表示制御を変更
+function updateInstallUi() {
+  if (!els.btnInstall) return;
+  if (isStandalone()) {
+    els.btnInstall.style.display = "none"; // 完全に非表示
+  } else if (installPrompt) {
+    els.btnInstall.style.display = "";
+    els.btnInstall.disabled = false;
+    els.btnInstall.textContent = "⬇️ アプリをインストール";
+  } else {
+    els.btnInstall.style.display = "";
+    els.btnInstall.disabled = false;
+    els.btnInstall.textContent = "⬇️ アプリをインストール";
   }
+}
 
   async function enablePush() {
     if (!("serviceWorker" in navigator) || !("PushManager" in window)) {
@@ -417,22 +419,29 @@
     return output;
   }
 
-  function setInstallHint() {
-    if (!els.installHint) return;
-    els.installHint.textContent = isIOS()
-      ? "iOSでは「ホーム画面に追加」してから通知を許可してください。"
-      : "";
+function setInstallHint() {
+  if (!els.installHint) return;
+  if (isStandalone()) {
+    els.installHint.textContent = "";
+    els.installHint.style.display = "none";
+  } else if (/iPhone|iPad|iPod/i.test(window.navigator.userAgent)) {
+    els.installHint.style.display = "block";
+    els.installHint.textContent = "iOSでは「ホーム画面に追加」してから通知を許可してください。";
+  } else {
+    els.installHint.textContent = "";
+    els.installHint.style.display = "none";
   }
+}
 
-  function init() {
-    resetIfNewYear();
-    bindEvents();
-    setInstallHint();
-    updateInstallUi();
-    loadData();
-    if (Notification?.permission === "granted") hidePushButton();
-    registerServiceWorker().catch(() => {});
-  }
+function init() {
+  resetIfNewYear();
+  bindEvents();
+  setInstallHint();
+  updateInstallUi();
+  loadData();
+  if (Notification?.permission === "granted") hidePushButton();
+  registerServiceWorker().catch(() => {});
+}
 
   document.addEventListener("DOMContentLoaded", init);
 })();
