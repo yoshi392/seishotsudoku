@@ -13,8 +13,8 @@
     btnLike: qs("btnLike"),
     btnTodayRead: qs("btnTodayRead"),
     todayDate: qs("todayDate"),
-    todayTitle: qs("todayTitle"),   // 聖書箇所名だけを入れる
-    todayVerse: qs("todayVerse"),   // 使わず空にする
+    todayTitle: qs("todayTitle"),
+    todayVerse: qs("todayVerse"),
     todayButtons: qs("todayButtons"),
     todayComment: qs("todayComment"),
     todayEventLabel: qs("todayEventLabel"),
@@ -70,10 +70,10 @@
     if (!m) return "";
     return `${m[1]}-${m[2].padStart(2, "0")}-${m[3].padStart(2, "0")}`;
   }
-  function todayYmdLocal() {
+  const todayYmdLocal = () => {
     const d = new Date();
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
-  }
+  };
 
   async function fetchJson(path) {
     const res = await fetch(`${API_BASE}${path}`, { headers: { Accept: "application/json" } });
@@ -108,7 +108,7 @@
           ymd,
           date: d.date || ymd.replaceAll("-", "/"),
           weekday: d.weekday || "",
-          title: d.title || d.verse || "今日の聖句",
+          title: d.title || d.verse || "今日の聖書箇所",
           verse: d.verse || "",
           comment: d.comment || "",
           buttons: normalizeButtons(d.buttons, d.urls, d.title || d.verse),
@@ -116,7 +116,7 @@
         };
       })
       .filter(Boolean)
-      .filter((d) => d.ymd < today)
+      .filter((d) => d.ymd <= today) // 今日まで
       .sort((a, b) => (a.ymd < b.ymd ? 1 : -1));
   }
 
@@ -131,39 +131,37 @@
     }));
   }
 
-function renderToday(t) {
-  if (!t) return;
-  const ymd = normalizeDate(t.date) || todayYmdLocal();
-  todayYmd = ymd;
+  function renderToday(t) {
+    if (!t) return;
+    const ymd = normalizeDate(t.date) || todayYmdLocal();
+    todayYmd = ymd;
 
-  const titleText = t.title || t.verse || "本日の聖書箇所";
-  const verseText = t.verse && t.verse !== titleText ? t.verse : "";
+    const titleText = t.title || t.verse || "本日の聖書箇所";
+    const verseText = t.verse && t.verse !== titleText ? t.verse : "";
 
-  setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
+    setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
 
-  const commentText = (t.comment || "").trim();
-  if (els.todayEventLabel) {
-    const base = getComputedStyle(els.todayVerse || document.body);
-    els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
-    els.todayEventLabel.style.display = commentText ? "block" : "none";
-    els.todayEventLabel.style.fontSize = base.fontSize;
-    els.todayEventLabel.style.fontWeight = base.fontWeight;
-    els.todayEventLabel.style.color = base.color;
+    // イベント見出し＋コメント
+    const commentText = (t.comment || "").trim();
+    if (els.todayEventLabel) {
+      const base = getComputedStyle(els.todayVerse || document.body);
+      els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
+      els.todayEventLabel.style.display = commentText ? "block" : "none";
+      els.todayEventLabel.style.fontSize = base.fontSize;
+      els.todayEventLabel.style.fontWeight = base.fontWeight;
+      els.todayEventLabel.style.color = base.color;
+    }
+    setMultiline(els.todayComment, commentText);
+
+    // 本日の聖書箇所 見出し＋本文
+    setText(els.todayTitle, "本日の聖書箇所");
+    setText(els.todayVerse, verseText || titleText);
+    if (els.todayVerse) els.todayVerse.style.display = "block";
+
+    renderButtons(els.todayButtons, t.buttons || []);
+    if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
+    updateTodayButtons(ymd);
   }
-  setMultiline(els.todayComment, commentText);
-
-  // 見出しを表示する
-  setText(els.todayTitle, "本日の聖書箇所");
-  // 聖書箇所名をここに表示する
-  setText(els.todayVerse, verseText || titleText);
-  if (els.todayVerse) els.todayVerse.style.display = "block";
-
-  renderButtons(els.todayButtons, t.buttons || []);
-  if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
-  updateTodayButtons(ymd);
-}
-
-
 
   function renderButtons(container, buttons) {
     if (!container) return;
@@ -486,6 +484,20 @@ function renderToday(t) {
     loadData();
     if (Notification?.permission === "granted") hidePushButton();
     registerServiceWorker().catch(() => {});
+  }
+
+  function resetIfNewYear() {
+    const nowYear = String(new Date().getFullYear());
+    const key = "lastYear";
+    const saved = localStorage.getItem(key);
+    if (saved === nowYear) return;
+    const toDelete = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && (k.startsWith("read:") || k.startsWith("like:"))) toDelete.push(k);
+    }
+    toDelete.forEach((k) => localStorage.removeItem(k));
+    localStorage.setItem(key, nowYear);
   }
 
   document.addEventListener("DOMContentLoaded", init);
