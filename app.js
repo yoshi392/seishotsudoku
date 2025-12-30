@@ -141,10 +141,9 @@ function renderToday(t) {
 
   setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
 
-  // イベント見出し＋コメント
   const commentText = (t.comment || "").trim();
   if (els.todayEventLabel) {
-    const base = getComputedStyle(els.todayTitle || document.body);
+    const base = getComputedStyle(els.todayVerse || document.body);
     els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
     els.todayEventLabel.style.display = commentText ? "block" : "none";
     els.todayEventLabel.style.fontSize = base.fontSize;
@@ -153,8 +152,9 @@ function renderToday(t) {
   }
   setMultiline(els.todayComment, commentText);
 
-  // 見出し＋聖書箇所名を表示
+  // 見出しを表示する
   setText(els.todayTitle, "本日の聖書箇所");
+  // 聖書箇所名をここに表示する
   setText(els.todayVerse, verseText || titleText);
   if (els.todayVerse) els.todayVerse.style.display = "block";
 
@@ -162,6 +162,7 @@ function renderToday(t) {
   if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
   updateTodayButtons(ymd);
 }
+
 
 
   function renderButtons(container, buttons) {
