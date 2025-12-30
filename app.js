@@ -158,28 +158,31 @@ function renderToday(t) {
   const titleText = t.title || t.verse || "本日の聖書箇所";
   const verseText = t.verse && t.verse !== titleText ? t.verse : "";
 
+  // 日付と挨拶はそのまま
   setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
-  // 見出しはHTMLにあるものを使い、ここでは本文だけ入れる
-  setText(els.todayTitle, titleText);      // ←ここに「本日の聖書箇所」を入れない
-  setText(els.todayVerse, verseText);
-  if (els.todayVerse) els.todayVerse.style.display = verseText ? "block" : "none";
 
-const commentText = (t.comment || "").trim();
-if (els.todayEventLabel) {
-  const titleStyle = getComputedStyle(els.todayTitle || document.body);
-  els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
-  els.todayEventLabel.style.display = commentText ? "block" : "none";
-  els.todayEventLabel.style.fontSize = titleStyle.fontSize;
-  els.todayEventLabel.style.fontWeight = titleStyle.fontWeight;
-  els.todayEventLabel.style.color = titleStyle.color;   // 色も合わせる
-}
-setMultiline(els.todayComment, commentText);
+  // コメント（イベント）を先に出す
+  const commentText = (t.comment || "").trim();
+  if (els.todayEventLabel) {
+    const titleStyle = getComputedStyle(els.todayTitle || document.body);
+    els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
+    els.todayEventLabel.style.display = commentText ? "block" : "none";
+    els.todayEventLabel.style.fontSize = titleStyle.fontSize;
+    els.todayEventLabel.style.fontWeight = titleStyle.fontWeight;
+    els.todayEventLabel.style.color = titleStyle.color;
+  }
+  setMultiline(els.todayComment, commentText);
 
+  // その後に本日の聖書箇所
+  setText(els.todayTitle, "本日の聖書箇所");
+  setText(els.todayVerse, titleText);
+  if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
 
   renderButtons(els.todayButtons, t.buttons || []);
   if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
   updateTodayButtons(ymd);
 }
+
 
   function renderButtons(container, buttons) {
     if (!container) return;
