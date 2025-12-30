@@ -150,31 +150,31 @@
     }));
   }
 
-  function renderToday(t) {
-    if (!t) return;
-    const ymd = normalizeDate(t.date) || todayYmdLocal();
-    todayYmd = ymd;
-const commentText = t.comment || "";
-setMultiline(els.todayComment, commentText);
+ function renderToday(t) {
+  if (!t) return;
+  const ymd = normalizeDate(t.date) || todayYmdLocal();
+  todayYmd = ymd;
 
-    const titleText = t.title || t.verse || "今日の聖句";
-    const verseText = t.verse && t.verse !== titleText ? t.verse : "";
+  const titleText = t.title || t.verse || "今日の聖書箇所";
+  const verseText = t.verse && t.verse !== titleText ? t.verse : "";
 
-    setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
-    setText(els.todayTitle, titleText);
-    setText(els.todayVerse, verseText);
-    if (els.todayVerse) els.todayVerse.style.display = verseText ? "block" : "none";
+  setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
+  setText(els.todayTitle, "本日の聖書箇所");          // 見出し
+  setText(els.todayVerse, titleText);                // 聖書箇所本体
+  if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
 
-    setText(els.todayComment, t.comment || "");
-    if (els.todayEventLabel) {
-      els.todayEventLabel.textContent = t.comment ? "本日のイベント／スケジュール" : "";
-      els.todayEventLabel.style.display = t.comment ? "block" : "none";
-    }
-
-    renderButtons(els.todayButtons, t.buttons || []);
-    if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
-    updateTodayButtons(ymd);
+  // イベント／スケジュールを先に表示
+  const commentText = t.comment || "";
+  if (els.todayEventLabel) {
+    els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
+    els.todayEventLabel.style.display = commentText ? "block" : "none";
   }
+  setMultiline(els.todayComment, commentText);       // 改行を保持
+
+  renderButtons(els.todayButtons, t.buttons || []);
+  if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
+  updateTodayButtons(ymd);
+}
 
   function renderButtons(container, buttons) {
     if (!container) return;
@@ -475,7 +475,7 @@ setMultiline(els.todayComment, commentText);
 function setMultiline(el, text) {
   if (!el) return;
   el.textContent = "";
-  const parts = String(text || "").split(/\r?\n/); // \r\n も分割
+  const parts = String(text || "").split(/\r?\n/);
   parts.forEach((line, idx) => {
     el.append(document.createTextNode(line));
     if (idx < parts.length - 1) el.append(document.createElement("br"));
