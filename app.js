@@ -131,36 +131,38 @@
     }));
   }
 
-  function renderToday(t) {
-    if (!t) return;
-    const ymd = normalizeDate(t.date) || todayYmdLocal();
-    todayYmd = ymd;
+function renderToday(t) {
+  if (!t) return;
+  const ymd = normalizeDate(t.date) || todayYmdLocal();
+  todayYmd = ymd;
 
-    const titleText = t.title || t.verse || "本日の聖書箇所";
-    const commentText = (t.comment || "").trim();
+  const titleText = t.title || t.verse || "本日の聖書箇所";
+  const verseText = t.verse && t.verse !== titleText ? t.verse : "";
 
-    setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
+  setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
 
-    // イベント見出し＋コメントを先に
-    if (els.todayEventLabel) {
-      const base = getComputedStyle(els.todayVerse || document.body);
-      els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
-      els.todayEventLabel.style.display = commentText ? "block" : "none";
-      els.todayEventLabel.style.fontSize = base.fontSize;
-      els.todayEventLabel.style.fontWeight = base.fontWeight;
-      els.todayEventLabel.style.color = base.color;
-    }
-    setMultiline(els.todayComment, commentText);
-
-    // 聖書箇所：見出しを空にし、ここに箇所名だけ表示
-    setText(els.todayTitle, titleText);
-    setText(els.todayVerse, "");
-    if (els.todayVerse) els.todayVerse.style.display = "none";
-
-    renderButtons(els.todayButtons, t.buttons || []);
-    if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
-    updateTodayButtons(ymd);
+  // イベント見出し＋コメント
+  const commentText = (t.comment || "").trim();
+  if (els.todayEventLabel) {
+    const base = getComputedStyle(els.todayTitle || document.body);
+    els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
+    els.todayEventLabel.style.display = commentText ? "block" : "none";
+    els.todayEventLabel.style.fontSize = base.fontSize;
+    els.todayEventLabel.style.fontWeight = base.fontWeight;
+    els.todayEventLabel.style.color = base.color;
   }
+  setMultiline(els.todayComment, commentText);
+
+  // 見出し＋聖書箇所名を表示
+  setText(els.todayTitle, "本日の聖書箇所");
+  setText(els.todayVerse, verseText || titleText);
+  if (els.todayVerse) els.todayVerse.style.display = "block";
+
+  renderButtons(els.todayButtons, t.buttons || []);
+  if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
+  updateTodayButtons(ymd);
+}
+
 
   function renderButtons(container, buttons) {
     if (!container) return;
