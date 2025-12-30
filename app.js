@@ -154,6 +154,8 @@
     if (!t) return;
     const ymd = normalizeDate(t.date) || todayYmdLocal();
     todayYmd = ymd;
+const commentText = t.comment || "";
+setMultiline(els.todayComment, commentText);
 
     const titleText = t.title || t.verse || "今日の聖句";
     const verseText = t.verse && t.verse !== titleText ? t.verse : "";
@@ -469,6 +471,16 @@
       els.installHint.style.display = "none";
     }
   }
+  
+function setMultiline(el, text) {
+  if (!el) return;
+  el.textContent = "";
+  const parts = String(text || "").split(/\r?\n/); // \r\n も分割
+  parts.forEach((line, idx) => {
+    el.append(document.createTextNode(line));
+    if (idx < parts.length - 1) el.append(document.createElement("br"));
+  });
+}
 
   function init() {
     resetIfNewYear();
