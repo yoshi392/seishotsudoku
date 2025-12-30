@@ -164,14 +164,17 @@ function renderToday(t) {
   setText(els.todayVerse, verseText);
   if (els.todayVerse) els.todayVerse.style.display = verseText ? "block" : "none";
 
-  const commentText = t.comment || "";
-  if (els.todayEventLabel) {
-    els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
-    els.todayEventLabel.style.display = commentText ? "block" : "none";
-    els.todayEventLabel.style.fontSize = "18px";
-    els.todayEventLabel.style.fontWeight = "700";
-  }
-  setMultiline(els.todayComment, commentText);
+const commentText = (t.comment || "").trim();
+if (els.todayEventLabel) {
+  const titleStyle = getComputedStyle(els.todayTitle || document.body);
+  els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
+  els.todayEventLabel.style.display = commentText ? "block" : "none";
+  els.todayEventLabel.style.fontSize = titleStyle.fontSize;
+  els.todayEventLabel.style.fontWeight = titleStyle.fontWeight;
+  els.todayEventLabel.style.color = titleStyle.color;   // 色も合わせる
+}
+setMultiline(els.todayComment, commentText);
+
 
   renderButtons(els.todayButtons, t.buttons || []);
   if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
@@ -476,13 +479,18 @@ function renderToday(t) {
   
 function setMultiline(el, text) {
   if (!el) return;
+  const lines = String(text || "").split(/\r?\n/);
+  // 先頭と末尾の空行を削除
+  while (lines.length && lines[0].trim() === "") lines.shift();
+  while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
+
   el.textContent = "";
-  const parts = String(text || "").split(/\r?\n/);
-  parts.forEach((line, idx) => {
+  lines.forEach((line, idx) => {
     el.append(document.createTextNode(line));
-    if (idx < parts.length - 1) el.append(document.createElement("br"));
+    if (idx < lines.length - 1) el.append(document.createElement("br"));
   });
 }
+
 
   function init() {
     resetIfNewYear();
