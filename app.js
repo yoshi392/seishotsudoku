@@ -155,24 +155,35 @@ function renderToday(t) {
   const ymd = normalizeDate(t.date) || todayYmdLocal();
   todayYmd = ymd;
 
-  const titleText = t.title || t.verse || "黙示録12-18"; // 聖書箇所名
-// 先にイベント見出しとコメント
-const commentText = (t.comment || "").trim();
-if (els.todayEventLabel) {
-  const titleStyle = getComputedStyle(els.todayVerse || document.body);
-  els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
-  els.todayEventLabel.style.display = commentText ? "block" : "none";
-  els.todayEventLabel.style.fontSize = titleStyle.fontSize;
-  els.todayEventLabel.style.fontWeight = titleStyle.fontWeight;
-  els.todayEventLabel.style.color = titleStyle.color;
-}
-// 改行保持でコメントを入れる（setMultilineは前回のものを利用）
-setMultiline(els.todayComment, commentText);
+  const titleText = t.title || t.verse || "本日の聖書箇所";
+  const commentText = (t.comment || "").trim();
 
+  setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
 
-  // 聖書箇所は1回だけ表示
-  setText(els.todayTitle, "");  // 聖書箇所名をここに
-  setText(els.todayVerse, titleText);         // 2段目は空にして重複を消す
+  // イベント見出しとコメント（フォントは聖書箇所に合わせる）
+  if (els.todayEventLabel) {
+    const base = getComputedStyle(els.todayTitle || document.body);
+    els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
+    els.todayEventLabel.style.display = commentText ? "block" : "none";
+    els.todayEventLabel.style.fontSize = base.fontSize;
+    els.todayEventLabel.style.fontWeight = base.fontWeight;
+    els.todayEventLabel.style.color = base.color;
+  }
+  setMultiline(els.todayComment, commentText);
+
+  // 本日の聖書箇所（見出し+本文）
+  setText(els.todayTitle, "本日の聖書箇所");
+  setText(els.todayVerse, titleText);
+  if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
+
+  // 表示順を入れ替え（親要素直下に event → comment → title → verse の順で挿入）
+  const parent = els.todayTitle && els.todayTitle.parentElement;
+  if (parent && els.todayEventLabel && els.todayComment && els.todayVerse) {
+    parent.insertBefore(els.todayEventLabel, parent.firstChild);
+    parent.insertBefore(els.todayComment, els.todayTitle);
+    parent.insertBefore(els.todayTitle, els.todayVerse);
+    parent.insertBefore(els.todayVerse, els.todayButtons || null);
+  }
 
   renderButtons(els.todayButtons, t.buttons || []);
   if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
@@ -477,12 +488,12 @@ setMultiline(els.todayComment, commentText);
     }
   }
   
+// 先頭に置くヘルパー
 function setMultiline(el, text) {
   if (!el) return;
   const lines = String(text || "").split(/\r?\n/);
   while (lines.length && lines[0].trim() === "") lines.shift();
   while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
-
   el.textContent = "";
   lines.forEach((line, idx) => {
     el.append(document.createTextNode(line));
