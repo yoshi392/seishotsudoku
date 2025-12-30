@@ -156,24 +156,23 @@ function renderToday(t) {
   todayYmd = ymd;
 
   const titleText = t.title || t.verse || "黙示録12-18"; // 聖書箇所名
-  const commentText = (t.comment || "").trim();
+// 先にイベント見出しとコメント
+const commentText = (t.comment || "").trim();
+if (els.todayEventLabel) {
+  const titleStyle = getComputedStyle(els.todayVerse || document.body);
+  els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
+  els.todayEventLabel.style.display = commentText ? "block" : "none";
+  els.todayEventLabel.style.fontSize = titleStyle.fontSize;
+  els.todayEventLabel.style.fontWeight = titleStyle.fontWeight;
+  els.todayEventLabel.style.color = titleStyle.color;
+}
+// 改行保持でコメントを入れる（setMultilineは前回のものを利用）
+setMultiline(els.todayComment, commentText);
 
-  setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
-
-  // 先にイベント
-  if (els.todayEventLabel) {
-    const titleStyle = getComputedStyle(els.todayTitle || document.body);
-    els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
-    els.todayEventLabel.style.display = commentText ? "block" : "none";
-    els.todayEventLabel.style.fontSize = titleStyle.fontSize;
-    els.todayEventLabel.style.fontWeight = titleStyle.fontWeight;
-    els.todayEventLabel.style.color = titleStyle.color;
-  }
-  setMultiline(els.todayComment, commentText);
 
   // 聖書箇所は1回だけ表示
-  setText(els.todayTitle, titleText);  // 聖書箇所名をここに
-  setText(els.todayVerse, "");         // 2段目は空にして重複を消す
+  setText(els.todayTitle, "");  // 聖書箇所名をここに
+  setText(els.todayVerse, titleText);         // 2段目は空にして重複を消す
 
   renderButtons(els.todayButtons, t.buttons || []);
   if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
