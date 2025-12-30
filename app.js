@@ -150,26 +150,28 @@
     }));
   }
 
- function renderToday(t) {
+function renderToday(t) {
   if (!t) return;
   const ymd = normalizeDate(t.date) || todayYmdLocal();
   todayYmd = ymd;
 
-  const titleText = t.title || t.verse || "今日の聖書箇所";
+  const titleText = t.title || t.verse || "本日の聖書箇所";
   const verseText = t.verse && t.verse !== titleText ? t.verse : "";
 
   setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
-  setText(els.todayTitle, "本日の聖書箇所");          // 見出し
-  setText(els.todayVerse, titleText);                // 聖書箇所本体
-  if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
+  // 見出しはHTMLにあるものを使い、ここでは本文だけ入れる
+  setText(els.todayTitle, titleText);      // ←ここに「本日の聖書箇所」を入れない
+  setText(els.todayVerse, verseText);
+  if (els.todayVerse) els.todayVerse.style.display = verseText ? "block" : "none";
 
-  // イベント／スケジュールを先に表示
   const commentText = t.comment || "";
   if (els.todayEventLabel) {
     els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
     els.todayEventLabel.style.display = commentText ? "block" : "none";
+    els.todayEventLabel.style.fontSize = "18px";
+    els.todayEventLabel.style.fontWeight = "700";
   }
-  setMultiline(els.todayComment, commentText);       // 改行を保持
+  setMultiline(els.todayComment, commentText);
 
   renderButtons(els.todayButtons, t.buttons || []);
   if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
