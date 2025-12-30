@@ -149,7 +149,6 @@
       lbUrl: u,
     }));
   }
-
 function renderToday(t) {
   if (!t) return;
   const ymd = normalizeDate(t.date) || todayYmdLocal();
@@ -158,11 +157,12 @@ function renderToday(t) {
   const titleText = t.title || t.verse || "本日の聖書箇所";
   const commentText = (t.comment || "").trim();
 
+  // 日付と挨拶はそのまま
   setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
 
-  // イベント見出しとコメント（フォントは聖書箇所に合わせる）
+  // イベント見出し＋コメントを先に
   if (els.todayEventLabel) {
-    const base = getComputedStyle(els.todayTitle || document.body);
+    const base = getComputedStyle(els.todayVerse || document.body);
     els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
     els.todayEventLabel.style.display = commentText ? "block" : "none";
     els.todayEventLabel.style.fontSize = base.fontSize;
@@ -171,25 +171,15 @@ function renderToday(t) {
   }
   setMultiline(els.todayComment, commentText);
 
-  // 本日の聖書箇所（見出し+本文）
+  // 聖書箇所は後段に1回だけ表示
   setText(els.todayTitle, "本日の聖書箇所");
   setText(els.todayVerse, titleText);
   if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
-
-  // 表示順を入れ替え（親要素直下に event → comment → title → verse の順で挿入）
-  const parent = els.todayTitle && els.todayTitle.parentElement;
-  if (parent && els.todayEventLabel && els.todayComment && els.todayVerse) {
-    parent.insertBefore(els.todayEventLabel, parent.firstChild);
-    parent.insertBefore(els.todayComment, els.todayTitle);
-    parent.insertBefore(els.todayTitle, els.todayVerse);
-    parent.insertBefore(els.todayVerse, els.todayButtons || null);
-  }
 
   renderButtons(els.todayButtons, t.buttons || []);
   if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
   updateTodayButtons(ymd);
 }
-
 
 
   function renderButtons(container, buttons) {
@@ -501,18 +491,23 @@ function setMultiline(el, text) {
   });
 }
 
+function clearTodayUI() {
+  setText(els.todayTitle, "");      // 見出しを空
+  setText(els.todayVerse, "");      // 聖書箇所名も空
+  setText(els.todayEventLabel, ""); // イベント見出しも空
+  setText(els.todayComment, "");    // コメント空
+}
+function init() {
+  clearTodayUI();   // ← 追加
+  resetIfNewYear();
+  bindEvents();
+  setInstallHint();
+  setGreeting();    // 「おはようございます。」だけ出る
+  updateInstallUi();
+  loadData();
+  …
+}
 
-
-  function init() {
-    resetIfNewYear();
-    bindEvents();
-    setInstallHint();
-    setGreeting();
-    updateInstallUi();
-    loadData();
-    if (Notification?.permission === "granted") hidePushButton();
-    registerServiceWorker().catch(() => {});
-  }
 
   document.addEventListener("DOMContentLoaded", init);
 })();
