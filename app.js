@@ -37,25 +37,13 @@
     (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
     window.navigator.standalone === true;
 
-  function alreadyInstalled() {
-    return isStandalone() || localStorage.getItem(INSTALLED_KEY) === "1";
-  }
-  function markInstalled() {
-    localStorage.setItem(INSTALLED_KEY, "1");
-    updateInstallUi();
-  }
-
-  window.addEventListener("appinstalled", () => { markInstalled(); });
-
   function greetingByTime() {
     const h = new Date().getHours();
     if (h < 11) return "おはようございます。";
     if (h < 17) return "こんにちは。";
     return "こんばんは。";
   }
-  function setGreeting() {
-    if (els.greeting) els.greeting.textContent = greetingByTime();
-  }
+  function setGreeting() { if (els.greeting) els.greeting.textContent = greetingByTime(); }
 
   function resetIfNewYear() {
     const nowYear = String(new Date().getFullYear());
@@ -79,15 +67,16 @@
   function setLike(ymd, on) { localStorage.setItem(storageKeyLike(ymd), on ? "1" : "0"); }
   function setText(el, value) { if (el) el.textContent = value ?? ""; }
 
-  async function fetchJson(path) {
-    const url = `${API_BASE}${path}`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
-    if (!res.ok) {
-      const msg = `${res.status} ${res.statusText}`;
-      setText(els.pushStatus, `データ取得に失敗しました: ${msg}`);
-      throw new Error(msg);
-    }
-    return res.json();
+  function setMultiline(el, text) {
+    if (!el) return;
+    const lines = String(text || "").split(/\r?\n/);
+    while (lines.length && lines[0].trim() === "") lines.shift();
+    while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
+    el.textContent = "";
+    lines.forEach((line, idx) => {
+      el.append(document.createTextNode(line));
+      if (idx < lines.length - 1) el.append(document.createElement("br"));
+    });
   }
 
   function normalizeDate(v) {
@@ -100,6 +89,13 @@
     return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
   }
 
+  async function fetchJson(path) {
+    const url = `${API_BASE}${path}`;
+    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
+    return res.json();
+  }
+
   async function loadData() {
     try {
       const [todayRes, daysRes] = await Promise.all([
@@ -109,9 +105,9 @@
       const daysArr = Array.isArray(daysRes) ? daysRes : daysRes.days || [];
       days = sanitizeDays(daysArr);
       if (todayRes?.date) todayYmd = normalizeDate(todayRes.date) || todayYmdLocal();
-
       renderToday(todayRes);
       renderList();
+      setText(els.pushStatus, "");
     } catch (e) {
       setText(els.pushStatus, `データ取得に失敗しました: ${e.message}`);
     }
@@ -135,7 +131,7 @@
         };
       })
       .filter(Boolean)
-      .filter((d) => d.ymd < today) // 今日を除外し過去のみ
+      .filter((d) => d.ymd < today)
       .sort((a, b) => (a.ymd < b.ymd ? 1 : -1));
   }
 
@@ -149,38 +145,36 @@
       lbUrl: u,
     }));
   }
-function renderToday(t) {
-  if (!t) return;
-  const ymd = normalizeDate(t.date) || todayYmdLocal();
-  todayYmd = ymd;
 
-  const titleText = t.title || t.verse || "本日の聖書箇所";
-  const commentText = (t.comment || "").trim();
+  function renderToday(t) {
+    if (!t) return;
+    const ymd = normalizeDate(t.date) || todayYmdLocal();
+    todayYmd = ymd;
 
-  // 日付と挨拶はそのまま
-  setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
+    const titleText = t.title || t.verse || "本日の聖書箇所";
+    setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
 
-  // イベント見出し＋コメントを先に
-  if (els.todayEventLabel) {
-    const base = getComputedStyle(els.todayVerse || document.body);
-    els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
-    els.todayEventLabel.style.display = commentText ? "block" : "none";
-    els.todayEventLabel.style.fontSize = base.fontSize;
-    els.todayEventLabel.style.fontWeight = base.fontWeight;
-    els.todayEventLabel.style.color = base.color;
+    // イベント見出し＋コメントを先に
+    const commentText = (t.comment || "").trim();
+    if (els.todayEventLabel) {
+      const base = getComputedStyle(els.todayVerse || document.body);
+      els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
+      els.todayEventLabel.style.display = commentText ? "block" : "none";
+      els.todayEventLabel.style.fontSize = base.fontSize;
+      els.todayEventLabel.style.fontWeight = base.fontWeight;
+      els.todayEventLabel.style.color = base.color;
+    }
+    setMultiline(els.todayComment, commentText);
+
+    // 聖書箇所（見出し＋本文）
+    setText(els.todayTitle, "本日の聖書箇所");
+    setText(els.todayVerse, titleText);
+    if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
+
+    renderButtons(els.todayButtons, t.buttons || []);
+    if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
+    updateTodayButtons(ymd);
   }
-  setMultiline(els.todayComment, commentText);
-
-  // 聖書箇所は後段に1回だけ表示
-  setText(els.todayTitle, "本日の聖書箇所");
-  setText(els.todayVerse, titleText);
-  if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
-
-  renderButtons(els.todayButtons, t.buttons || []);
-  if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
-  updateTodayButtons(ymd);
-}
-
 
   function renderButtons(container, buttons) {
     if (!container) return;
@@ -222,6 +216,13 @@ function renderToday(t) {
         verse.className = "meta";
         verse.textContent = verseText;
         li.append(verse);
+      }
+
+      if (d.comment) {
+        const c = document.createElement("div");
+        c.className = "meta";
+        setMultiline(c, d.comment);
+        li.append(c);
       }
 
       if (d.buttons && d.buttons.length) {
@@ -303,7 +304,7 @@ function renderToday(t) {
   }
 
   async function toggleLike(date, nowOn) {
-    setLike(date, nowOn); // ローカル状態
+    setLike(date, nowOn);
     try {
       const delta = nowOn ? 1 : -1;
       const res = await fetch(`${API_BASE}/like`, {
@@ -313,12 +314,11 @@ function renderToday(t) {
       });
       const json = await res.json();
       if (json.likeCount !== undefined) {
-        // 該当日のみ likeCount を更新
         days = days.map((d) => (d.ymd === date ? { ...d, likeCount: json.likeCount } : d));
         updateLikeCount(date, json.likeCount);
       }
     } catch (e) {
-      // サーバ失敗時はローカルだけ保持
+      /* サーバ失敗時はローカルのみ */
     }
   }
 
@@ -378,6 +378,13 @@ function renderToday(t) {
 
     els.btnPush?.addEventListener("click", enablePush);
   }
+
+  function alreadyInstalled() {
+    return isStandalone() || localStorage.getItem(INSTALLED_KEY) === "1";
+  }
+  function markInstalled() { localStorage.setItem(INSTALLED_KEY, "1"); updateInstallUi(); }
+
+  window.addEventListener("appinstalled", () => { markInstalled(); });
 
   function updateInstallUi() {
     if (!els.btnInstall) return;
@@ -444,9 +451,7 @@ function renderToday(t) {
     });
   }
 
-  function hidePushButton() {
-    if (els.btnPush) els.btnPush.style.display = "none";
-  }
+  function hidePushButton() { if (els.btnPush) els.btnPush.style.display = "none"; }
 
   function registerServiceWorker() {
     return Promise.race([
@@ -477,37 +482,25 @@ function renderToday(t) {
       els.installHint.style.display = "none";
     }
   }
-  
-// 先頭に置くヘルパー
-function setMultiline(el, text) {
-  if (!el) return;
-  const lines = String(text || "").split(/\r?\n/);
-  while (lines.length && lines[0].trim() === "") lines.shift();
-  while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
-  el.textContent = "";
-  lines.forEach((line, idx) => {
-    el.append(document.createTextNode(line));
-    if (idx < lines.length - 1) el.append(document.createElement("br"));
-  });
-}
 
-function clearTodayUI() {
-  setText(els.todayTitle, "");      // 見出しを空
-  setText(els.todayVerse, "");      // 聖書箇所名も空
-  setText(els.todayEventLabel, ""); // イベント見出しも空
-  setText(els.todayComment, "");    // コメント空
-}
-function init() {
-  clearTodayUI();   // ← 追加
-  resetIfNewYear();
-  bindEvents();
-  setInstallHint();
-  setGreeting();    // 「おはようございます。」だけ出る
-  updateInstallUi();
-  loadData();
-  …
-}
+  function clearTodayUI() {
+    setText(els.todayTitle, "");
+    setText(els.todayVerse, "");
+    setText(els.todayEventLabel, "");
+    setText(els.todayComment, "");
+  }
 
+  function init() {
+    clearTodayUI();
+    resetIfNewYear();
+    bindEvents();
+    setInstallHint();
+    setGreeting();
+    updateInstallUi();
+    loadData();
+    if (Notification?.permission === "granted") hidePushButton();
+    registerServiceWorker().catch(() => {});
+  }
 
   document.addEventListener("DOMContentLoaded", init);
 })();
