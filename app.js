@@ -152,10 +152,11 @@
     todayYmd = ymd;
 
     const titleText = t.title || t.verse || "本日の聖書箇所";
+    const commentText = (t.comment || "").trim();
+
     setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
 
     // イベント見出し＋コメントを先に
-    const commentText = (t.comment || "").trim();
     if (els.todayEventLabel) {
       const base = getComputedStyle(els.todayVerse || document.body);
       els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
@@ -166,8 +167,8 @@
     }
     setMultiline(els.todayComment, commentText);
 
-    // 聖書箇所（見出し＋本文）
-    setText(els.todayTitle, "本日の聖書箇所");
+    // 聖書箇所：見出しを空にし、本文だけを表示
+    setText(els.todayTitle, "");           // ←見出しは静的なものを使う前提で空
     setText(els.todayVerse, titleText);
     if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
 
@@ -317,9 +318,7 @@
         days = days.map((d) => (d.ymd === date ? { ...d, likeCount: json.likeCount } : d));
         updateLikeCount(date, json.likeCount);
       }
-    } catch (e) {
-      /* サーバ失敗時はローカルのみ */
-    }
+    } catch (e) {}
   }
 
   function updateLikeCount(date, cnt) {
