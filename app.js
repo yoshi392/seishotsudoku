@@ -3,7 +3,7 @@
   const API_BASE = (cfg.WORKER_ORIGIN || "").replace(/\/+$/, "") || location.origin;
   const VAPID_KEY = cfg.VAPID_PUBLIC_KEY || "";
   const qs = (id) => document.getElementById(id);
-  const isIOS = () => /iPhone|iPad|iPod/i.test(window.navigator.userAgent);
+  const isIOS = () => /iPhone|iPad|iPod/i.test(navigator.userAgent);
   const INSTALLED_KEY = "pwa_installed";
 
   const els = {
@@ -13,8 +13,8 @@
     btnLike: qs("btnLike"),
     btnTodayRead: qs("btnTodayRead"),
     todayDate: qs("todayDate"),
-    todayTitle: qs("todayTitle"),
-    todayVerse: qs("todayVerse"),
+    todayTitle: qs("todayTitle"),   // 聖書箇所名だけを入れる
+    todayVerse: qs("todayVerse"),   // 使わず空にする
     todayButtons: qs("todayButtons"),
     todayComment: qs("todayComment"),
     todayEventLabel: qs("todayEventLabel"),
@@ -35,7 +35,15 @@
 
   const isStandalone = () =>
     (window.matchMedia && window.matchMedia("(display-mode: standalone)").matches) ||
-    window.navigator.standalone === true;
+    navigator.standalone === true;
+
+  const setText = (el, v) => { if (el) el.textContent = v ?? ""; };
+  const storageKeyRead = (d) => `read:${d}`;
+  const storageKeyLike = (d) => `like:${d}`;
+  const isRead = (d) => localStorage.getItem(storageKeyRead(d)) === "1";
+  const isLiked = (d) => localStorage.getItem(storageKeyLike(d)) === "1";
+  const setRead = (d, on) => localStorage.setItem(storageKeyRead(d), on ? "1" : "0");
+  const setLike = (d, on) => localStorage.setItem(storageKeyLike(d), on ? "1" : "0");
 
   function greetingByTime() {
     const h = new Date().getHours();
@@ -44,28 +52,6 @@
     return "こんばんは。";
   }
   function setGreeting() { if (els.greeting) els.greeting.textContent = greetingByTime(); }
-
-  function resetIfNewYear() {
-    const nowYear = String(new Date().getFullYear());
-    const key = "lastYear";
-    const saved = localStorage.getItem(key);
-    if (saved === nowYear) return;
-    const toDelete = [];
-    for (let i = 0; i < localStorage.length; i++) {
-      const k = localStorage.key(i);
-      if (k && (k.startsWith("read:") || k.startsWith("like:"))) toDelete.push(k);
-    }
-    toDelete.forEach((k) => localStorage.removeItem(k));
-    localStorage.setItem(key, nowYear);
-  }
-
-  function storageKeyRead(ymd) { return `read:${ymd}`; }
-  function storageKeyLike(ymd) { return `like:${ymd}`; }
-  function isRead(ymd) { return localStorage.getItem(storageKeyRead(ymd)) === "1"; }
-  function isLiked(ymd) { return localStorage.getItem(storageKeyLike(ymd)) === "1"; }
-  function setRead(ymd, on) { localStorage.setItem(storageKeyRead(ymd), on ? "1" : "0"); }
-  function setLike(ymd, on) { localStorage.setItem(storageKeyLike(ymd), on ? "1" : "0"); }
-  function setText(el, value) { if (el) el.textContent = value ?? ""; }
 
   function setMultiline(el, text) {
     if (!el) return;
@@ -90,8 +76,7 @@
   }
 
   async function fetchJson(path) {
-    const url = `${API_BASE}${path}`;
-    const res = await fetch(url, { headers: { Accept: "application/json" } });
+    const res = await fetch(`${API_BASE}${path}`, { headers: { Accept: "application/json" } });
     if (!res.ok) throw new Error(`${res.status} ${res.statusText}`);
     return res.json();
   }
@@ -167,10 +152,10 @@
     }
     setMultiline(els.todayComment, commentText);
 
-    // 聖書箇所：見出しを空にし、本文だけを表示
-    setText(els.todayTitle, "");           // ←見出しは静的なものを使う前提で空
-    setText(els.todayVerse, titleText);
-    if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
+    // 聖書箇所：見出しを空にし、ここに箇所名だけ表示
+    setText(els.todayTitle, titleText);
+    setText(els.todayVerse, "");
+    if (els.todayVerse) els.todayVerse.style.display = "none";
 
     renderButtons(els.todayButtons, t.buttons || []);
     if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
@@ -382,7 +367,6 @@
     return isStandalone() || localStorage.getItem(INSTALLED_KEY) === "1";
   }
   function markInstalled() { localStorage.setItem(INSTALLED_KEY, "1"); updateInstallUi(); }
-
   window.addEventListener("appinstalled", () => { markInstalled(); });
 
   function updateInstallUi() {
