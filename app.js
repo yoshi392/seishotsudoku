@@ -155,14 +155,12 @@ function renderToday(t) {
   const ymd = normalizeDate(t.date) || todayYmdLocal();
   todayYmd = ymd;
 
-  const titleText = t.title || t.verse || "本日の聖書箇所";
-  const verseText = t.verse && t.verse !== titleText ? t.verse : "";
+  const titleText = t.title || t.verse || "黙示録12-18"; // 聖書箇所名
+  const commentText = (t.comment || "").trim();
 
-  // 日付と挨拶はそのまま
   setText(els.todayDate, `${t.date || ymd} ${t.weekday || ""}`.trim());
 
-  // コメント（イベント）を先に出す
-  const commentText = (t.comment || "").trim();
+  // 先にイベント
   if (els.todayEventLabel) {
     const titleStyle = getComputedStyle(els.todayTitle || document.body);
     els.todayEventLabel.textContent = commentText ? "本日のイベント／スケジュール" : "";
@@ -173,15 +171,15 @@ function renderToday(t) {
   }
   setMultiline(els.todayComment, commentText);
 
-  // その後に本日の聖書箇所
-  setText(els.todayTitle, "本日の聖書箇所");
-  setText(els.todayVerse, titleText);
-  if (els.todayVerse) els.todayVerse.style.display = titleText ? "block" : "none";
+  // 聖書箇所は1回だけ表示
+  setText(els.todayTitle, titleText);  // 聖書箇所名をここに
+  setText(els.todayVerse, "");         // 2段目は空にして重複を消す
 
   renderButtons(els.todayButtons, t.buttons || []);
   if (els.todayLikeCount) els.todayLikeCount.textContent = `♡ ${t.likeCount ?? 0}`;
   updateTodayButtons(ymd);
 }
+
 
 
   function renderButtons(container, buttons) {
@@ -483,7 +481,6 @@ function renderToday(t) {
 function setMultiline(el, text) {
   if (!el) return;
   const lines = String(text || "").split(/\r?\n/);
-  // 先頭と末尾の空行を削除
   while (lines.length && lines[0].trim() === "") lines.shift();
   while (lines.length && lines[lines.length - 1].trim() === "") lines.pop();
 
@@ -493,6 +490,7 @@ function setMultiline(el, text) {
     if (idx < lines.length - 1) el.append(document.createElement("br"));
   });
 }
+
 
 
   function init() {
