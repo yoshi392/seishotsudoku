@@ -98,27 +98,28 @@
     }
   }
 
-  function sanitizeDays(arr) {
-    const today = todayYmdLocal();
-    return (arr || [])
-      .map((d) => {
-        const ymd = normalizeDate(d.ymd || d.date);
-        if (!ymd) return null;
-        return {
-          ymd,
-          date: d.date || ymd.replaceAll("-", "/"),
-          weekday: d.weekday || "",
-          title: d.title || d.verse || "今日の聖書箇所",
-          verse: d.verse || "",
-          comment: d.comment || "",
-          buttons: normalizeButtons(d.buttons, d.urls, d.title || d.verse),
-          likeCount: d.likeCount ?? 0,
-        };
-      })
-      .filter(Boolean)
-      .filter((d) => d.ymd < today) // 今日を除外し過去のみ
-      .sort((a, b) => (a.ymd < b.ymd ? 1 : -1));
-  }
+function sanitizeDays(arr) {
+  const today = todayYmdLocal();
+  return (arr || [])
+    .map((d) => {
+      const ymd = normalizeDate(d.ymd || d.date);
+      if (!ymd) return null;
+      return {
+        ymd,
+        date: d.date || ymd.replaceAll("-", "/"),
+        weekday: d.weekday || "",
+        title: d.title || d.verse || "今日の聖書箇所",
+        verse: d.verse || "",
+        comment: d.comment || "",
+        buttons: normalizeButtons(d.buttons, d.urls, d.title || d.verse),
+        likeCount: d.likeCount ?? 0,
+      };
+    })
+    .filter(Boolean)
+    .filter((d) => d.ymd < today)      // ← 今日を除外して過去だけ
+    .sort((a, b) => (a.ymd < b.ymd ? 1 : -1));
+}
+
 
   function normalizeButtons(buttons, urls, label) {
     if (Array.isArray(buttons) && buttons.length) return buttons;
