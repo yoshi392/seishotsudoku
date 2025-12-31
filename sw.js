@@ -1,4 +1,4 @@
-const CACHE_NAME = "seishotsudoku-pwa-v5a";
+const CACHE_NAME = "seishotsudoku-pwa-v6";
 const ASSETS = ["./", "./index.html", "./app.js", "./manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
