@@ -88,7 +88,7 @@
         fetchJson("/days?limit=365"),
       ]);
       const daysArr = Array.isArray(daysRes) ? daysRes : daysRes.days || [];
-      days = (daysArr);
+      days = sanitizeDays(daysArr);
       if (todayRes?.date) todayYmd = normalizeDate(todayRes.date) || todayYmdLocal();
       renderToday(todayRes);
       renderList();
@@ -98,28 +98,27 @@
     }
   }
 
-function sanitizeDays(arr) {
-  const today = todayYmdLocal();
-  return (arr || [])
-    .map((d) => {
-      const ymd = normalizeDate(d.ymd || d.date);
-      if (!ymd) return null;
-      return {
-        ymd,
-        date: d.date || ymd.replaceAll("-", "/"),
-        weekday: d.weekday || "",
-        title: d.title || d.verse || "今日の聖書箇所",
-        verse: d.verse || "",
-        comment: d.comment || "",
-        buttons: normalizeButtons(d.buttons, d.urls, d.title || d.verse),
-        likeCount: d.likeCount ?? 0,
-      };
-    })
-    .filter(Boolean)
-    .filter((d) => d.ymd < today)      // ← 今日を除外して過去だけ
-    .sort((a, b) => (a.ymd < b.ymd ? 1 : -1));
-}
-
+  function sanitizeDays(arr) {
+    const today = todayYmdLocal();
+    return (arr || [])
+      .map((d) => {
+        const ymd = normalizeDate(d.ymd || d.date);
+        if (!ymd) return null;
+        return {
+          ymd,
+          date: d.date || ymd.replaceAll("-", "/"),
+          weekday: d.weekday || "",
+          title: d.title || d.verse || "今日の聖書箇所",
+          verse: d.verse || "",
+          comment: d.comment || "",
+          buttons: normalizeButtons(d.buttons, d.urls, d.title || d.verse),
+          likeCount: d.likeCount ?? 0,
+        };
+      })
+      .filter(Boolean)
+      .filter((d) => d.ymd < today) // 今日を除外
+      .sort((a, b) => (a.ymd < b.ymd ? 1 : -1));
+  }
 
   function normalizeButtons(buttons, urls, label) {
     if (Array.isArray(buttons) && buttons.length) return buttons;
@@ -181,7 +180,9 @@ function sanitizeDays(arr) {
   function renderList() {
     if (!els.list) return;
     els.list.innerHTML = "";
-    const filtered = filter === "unread" ? days.filter((d) => !isRead(d.ymd)) : days;
+    const today = todayYmdLocal();
+    const base = days.filter((d) => d.ymd < today); // 念のため今日を除外
+    const filtered = filter === "unread" ? base.filter((d) => !isRead(d.ymd)) : base;
 
     filtered.forEach((d) => {
       const li = document.createElement("li");
@@ -475,18 +476,6 @@ function sanitizeDays(arr) {
     setText(els.todayComment, "");
   }
 
-  function init() {
-    clearTodayUI();
-    resetIfNewYear();
-    bindEvents();
-    setInstallHint();
-    setGreeting();
-    updateInstallUi();
-    loadData();
-    if (Notification?.permission === "granted") hidePushButton();
-    registerServiceWorker().catch(() => {});
-  }
-
   function resetIfNewYear() {
     const nowYear = String(new Date().getFullYear());
     const key = "lastYear";
@@ -499,6 +488,18 @@ function sanitizeDays(arr) {
     }
     toDelete.forEach((k) => localStorage.removeItem(k));
     localStorage.setItem(key, nowYear);
+  }
+
+  function init() {
+    clearTodayUI();
+    resetIfNewYear();
+    bindEvents();
+    setInstallHint();
+    setGreeting();
+    updateInstallUi();
+    loadData();
+    if (Notification?.permission === "granted") hidePushButton();
+    registerServiceWorker().catch(() => {});
   }
 
   document.addEventListener("DOMContentLoaded", init);
