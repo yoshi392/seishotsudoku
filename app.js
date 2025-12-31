@@ -88,7 +88,7 @@
         fetchJson("/days?limit=365"),
       ]);
       const daysArr = Array.isArray(daysRes) ? daysRes : daysRes.days || [];
-      days = sanitizeDays(daysArr);
+      days = (daysArr);
       if (todayRes?.date) todayYmd = normalizeDate(todayRes.date) || todayYmdLocal();
       renderToday(todayRes);
       renderList();
@@ -116,7 +116,7 @@
         };
       })
       .filter(Boolean)
-      .filter((d) => d.ymd <= today) // 今日まで
+      .filter((d) => d.ymd < today) // 今日を除外し過去のみ
       .sort((a, b) => (a.ymd < b.ymd ? 1 : -1));
   }
 
