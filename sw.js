@@ -1,5 +1,5 @@
-const CACHE_NAME = "seishotsudoku-pwa-v19";
-const ASSETS = ["./", "./index.html", "./app.js", "./manifest.webmanifest"];
+const CACHE_NAME = "seishotsudoku-pwa-v20";
+const ASSETS = ["./", "./index.html", "./app.js", "./manifest.webmanifest", "./data/readings.json"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE_NAME).then((c) => c.addAll(ASSETS)).then(() => self.skipWaiting()));

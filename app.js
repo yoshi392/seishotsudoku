@@ -40,6 +40,7 @@
   const setText = (el, v) => { if (el) el.textContent = v ?? ""; };
   const storageKeyRead = (d) => `read:${d}`;
   const storageKeyLike = (d) => `like:${d}`;
+  const storageKeyCache = "cache:api";
   const isRead = (d) => localStorage.getItem(storageKeyRead(d)) === "1";
   const isLiked = (d) => localStorage.getItem(storageKeyLike(d)) === "1";
   const setRead = (d, on) => localStorage.setItem(storageKeyRead(d), on ? "1" : "0");
@@ -81,20 +82,95 @@
     return res.json();
   }
 
+  function applyData(todayRes, daysRes) {
+    const daysArr = Array.isArray(daysRes) ? daysRes : daysRes.days || [];
+    days = sanitizeDays(daysArr);
+    if (todayRes?.date) todayYmd = normalizeDate(todayRes.date) || todayYmdLocal();
+    renderToday(todayRes);
+    renderList();
+  }
+
+  function saveCache(todayRes, daysRes) {
+    try {
+      localStorage.setItem(storageKeyCache, JSON.stringify({
+        savedAt: Date.now(),
+        today: todayRes || null,
+        days: daysRes || null,
+      }));
+    } catch (e) {}
+  }
+
+  function loadCache() {
+    try {
+      const raw = localStorage.getItem(storageKeyCache);
+      if (!raw) return false;
+      const data = JSON.parse(raw);
+      if (!data || !data.today || !data.days) return false;
+      applyData(data.today, data.days);
+      return true;
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function readingsToApiShape(readings) {
+    const items = Array.isArray(readings?.items) ? readings.items : [];
+    const today = todayYmdLocal();
+    const mapped = items
+      .map((item) => {
+        const ymd = normalizeDate(item.date || item.ymd);
+        if (!ymd) return null;
+        return {
+          date: item.date || ymd.replaceAll("-", "/"),
+          weekday: item.weekday || "",
+          title: item.title || item.passage || item.verse || "",
+          verse: item.verse || "",
+          comment: item.comment || "",
+          buttons: normalizeButtons(item.buttons, item.urls, item.title || item.passage || item.verse),
+          likeCount: item.likeCount ?? 0,
+          ymd,
+        };
+      })
+      .filter(Boolean);
+    const todayItem = mapped.find((d) => d.ymd === today);
+    return {
+      today: todayItem || mapped[0] || null,
+      days: mapped,
+    };
+  }
+
+  async function loadLocalReadings() {
+    try {
+      const res = await fetch("./data/readings.json", { headers: { Accept: "application/json" } });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return readingsToApiShape(json);
+    } catch (e) {
+      return null;
+    }
+  }
+
   async function loadData() {
+    let rendered = loadCache();
+
+    if (!rendered) {
+      const local = await loadLocalReadings();
+      if (local?.today && local?.days) {
+        applyData(local.today, local.days);
+        rendered = true;
+      }
+    }
+
     try {
       const [todayRes, daysRes] = await Promise.all([
         fetchJson("/today"),
         fetchJson("/days?limit=365"),
       ]);
-      const daysArr = Array.isArray(daysRes) ? daysRes : daysRes.days || [];
-      days = sanitizeDays(daysArr);
-      if (todayRes?.date) todayYmd = normalizeDate(todayRes.date) || todayYmdLocal();
-      renderToday(todayRes);
-      renderList();
+      applyData(todayRes, daysRes);
+      saveCache(todayRes, daysRes);
       setText(els.pushStatus, "");
     } catch (e) {
-      setText(els.pushStatus, `データ取得に失敗しました: ${e.message}`);
+      if (!rendered) setText(els.pushStatus, `????????????????????: ${e.message}`);
     }
   }
 
