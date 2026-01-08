@@ -132,9 +132,9 @@
         };
       })
       .filter(Boolean);
-    const todayItem = mapped.find((d) => d.ymd === today);
+    const todayItem = mapped.find((d) => d.ymd === today) || null;
     return {
-      today: todayItem || mapped[0] || null,
+      today: todayItem,
       days: mapped,
     };
   }
@@ -150,6 +150,13 @@
     }
   }
 
+  function setLoadingUI() {
+    setText(els.todayTitle, "読み込み中…");
+    setText(els.todayVerse, "");
+    setText(els.todayEventLabel, "");
+    setText(els.todayComment, "");
+  }
+
   async function loadData() {
     let rendered = loadCache();
 
@@ -160,6 +167,7 @@
         rendered = true;
       }
     }
+    if (!rendered) setLoadingUI();
 
     try {
       const [todayRes, daysRes] = await Promise.all([
@@ -170,7 +178,10 @@
       saveCache(todayRes, daysRes);
       setText(els.pushStatus, "");
     } catch (e) {
-      if (!rendered) setText(els.pushStatus, `????????????????????: ${e.message}`);
+      if (!rendered) {
+        setLoadingUI();
+        setText(els.pushStatus, `????????????????????: ${e.message}`);
+      }
     }
   }
 
